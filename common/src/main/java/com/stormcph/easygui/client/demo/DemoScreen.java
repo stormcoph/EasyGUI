@@ -11,11 +11,16 @@ import com.stormcph.easygui.client.screen.EasyScreen;
 import com.stormcph.easygui.client.theme.Theme;
 import com.stormcph.easygui.client.widget.Button;
 import com.stormcph.easygui.client.widget.Checkbox;
+import com.stormcph.easygui.client.widget.CycleButton;
+import com.stormcph.easygui.client.widget.Divider;
 import com.stormcph.easygui.client.widget.Dropdown;
 import com.stormcph.easygui.client.widget.Label;
+import com.stormcph.easygui.client.widget.NumberStepper;
 import com.stormcph.easygui.client.widget.Panel;
 import com.stormcph.easygui.client.widget.ProgressBar;
+import com.stormcph.easygui.client.widget.RangeSlider;
 import com.stormcph.easygui.client.widget.ScrollPanel;
+import com.stormcph.easygui.client.widget.SegmentedControl;
 import com.stormcph.easygui.client.widget.ShaderView;
 import com.stormcph.easygui.client.widget.Slider;
 import com.stormcph.easygui.client.widget.Spinner;
@@ -36,6 +41,9 @@ import java.util.List;
  */
 @Environment(EnvType.CLIENT)
 public class DemoScreen extends EasyScreen {
+    /** Exercises {@link CycleButton#ofEnum} ("HIGH" renders as "High"). */
+    private enum DemoQuality {LOW, MEDIUM, HIGH, ULTRA}
+
     private final ProgressBar progressBar = new ProgressBar();
     private ScrollPanel persistedScroll;
 
@@ -81,7 +89,10 @@ public class DemoScreen extends EasyScreen {
                 .setBounds(cx + 18, wide ? cy + 44 : cy + 32, cardW - 36, 3);
 
         if (wide) {
-            addControls(card, card, cx + 18, cy + 52, 200);
+            // The widget set outgrew the card, so the left column scrolls too
+            ScrollPanel controls = card.add(new ScrollPanel());
+            controls.setBounds(cx + 8, cy + 48, 222, cardH - 58);
+            addControls(controls, card, cx + 18, cy + 56, 200);
 
             // Right column: smooth-scrolling list + liquid shader bar
             float listX = cx + 240;
@@ -222,6 +233,30 @@ public class DemoScreen extends EasyScreen {
                 .setTooltip("Re-renders every widget with the bundled Inter TrueType font")
                 .setBounds(x, rowY, w, 16);
         rowY += 22;
+
+        parent.add(new Divider("More widgets"))
+                .setBounds(x, rowY, w, 10);
+        rowY += 16;
+
+        // Segmented control: exclusive choice with a sliding accent pill
+        parent.add(new SegmentedControl(List.of("Fancy", "Fast", "Off"), 0, i -> {}))
+                .setBounds(x, rowY, w, 18);
+        rowY += 24;
+
+        // Range slider: drag either thumb to pick a min/max pair
+        parent.add(new RangeSlider(0, 100, 1, 20, 80, (lo, hi) -> {})
+                        .setValueFormatter((lo, hi) -> lo.intValue() + "–" + hi.intValue(), 34))
+                .setBounds(x, rowY, w, 16);
+        rowY += 22;
+
+        // Number stepper (click +/−, drag to scrub, click the number to type) + cycle button
+        parent.add(new NumberStepper(0, 64, 1, 16, v -> {}))
+                .setTooltip("Click +/−, drag the number to scrub, or click it to type")
+                .setBounds(x, rowY, 70, 18);
+        parent.add(CycleButton.ofEnum("Quality", DemoQuality.class, DemoQuality.HIGH, q -> {}))
+                .setTooltip("Right-click cycles backwards")
+                .setBounds(x + 76, rowY, w - 76, 18);
+        rowY += 24;
 
         return rowY;
     }

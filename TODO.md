@@ -19,12 +19,12 @@ Living checklist. When a feature ships it gets checked (`[x]`) — never removed
 
 ## Input widgets
 
-- [ ] Range slider — two thumbs selecting a min/max pair, same theming as `Slider`
+- [x] Range slider — two thumbs selecting a min/max pair, same theming as `Slider`
 - [ ] Color picker — HSV box + hue/alpha strips + hex field; popup and inline variants; binds to `defineColor`
 - [ ] Keybind button — click, press key to bind; conflict highlighting
-- [ ] Number stepper — text input with +/− buttons and drag-to-scrub
-- [ ] Segmented control / radio group — exclusive choice for 2–4 options
-- [ ] Cycle button — one-click enum cycling ("Mode: Fancy → Fast → Off")
+- [x] Number stepper — text input with +/− buttons and drag-to-scrub
+- [x] Segmented control / radio group — exclusive choice for 2–4 options
+- [x] Cycle button — one-click enum cycling ("Mode: Fancy → Fast → Off")
 - [ ] Multiline text area
 - [ ] Searchable dropdown / combo box with filtering
 
@@ -35,7 +35,7 @@ Living checklist. When a feature ships it gets checked (`[x]`) — never removed
 - [ ] Collapsible sections / accordion for settings categories
 - [ ] Modal dialogs — confirm/alert built on the popup layer
 - [ ] Context menus (right-click)
-- [ ] Divider / separator widget
+- [x] Divider / separator widget
 
 ## Polish & premium feel
 
