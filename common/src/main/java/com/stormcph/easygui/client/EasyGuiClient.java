@@ -5,6 +5,7 @@ import dev.architectury.event.events.client.ClientTickEvent;
 import dev.architectury.registry.client.keymappings.KeyMappingRegistry;
 import com.stormcph.easygui.client.config.EasyConfig;
 import com.stormcph.easygui.client.demo.DemoConfig;
+import com.stormcph.easygui.client.demo.DemoHud;
 import com.stormcph.easygui.client.demo.DemoOverlay;
 import com.stormcph.easygui.client.demo.DemoScreen;
 import com.stormcph.easygui.client.overlay.OverlayManager;
@@ -33,6 +34,7 @@ public final class EasyGuiClient {
         EasyConfig.bootstrap();
         OverlayManager.init();
         OverlayManager.register(DEMO_OVERLAY);
+        DemoHud.register();
         // Developer decision, not a user setting: this mod opts into chat-screen HUD editing.
         OverlayManager.setMoveInChat(true);
         DemoConfig.applyStartup();

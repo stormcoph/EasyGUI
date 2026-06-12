@@ -27,7 +27,7 @@ Run the dev client and press **F8** (rebindable under Options → Controls → E
 ./gradlew :fabric:runClient      # or :neoforge:runClient
 ```
 
-The demo screen (`com.stormcph.easygui.client.demo.DemoScreen`) exercises every widget and doubles as example code. It can also toggle a sample HUD overlay (watermark + FPS card).
+The demo screen (`com.stormcph.easygui.client.demo.DemoScreen`) exercises every feature across six tabs — Widgets, Inputs, Layout, Charts, HUD, and Media — and doubles as example code. The HUD tab toggles sample overlays (watermark, placeholder-template info line, animated module list, and a live FPS sparkline hosted via `WidgetHostOverlay`), all draggable in the HUD editor.
 
 ## Building
 
@@ -224,7 +224,7 @@ card.add(new Slider(50, 200, 5, MyConfig.HUD_SCALE.get() * 100, v -> MyConfig.HU
 MyConfig.ACCENT.onChange(color -> theme.accent = color);
 ```
 
-Dotted keys become nested JSON objects, so files stay organized and hand-editable. The demo persists its theme, frosted/font toggles, overlay visibility, slider value, *and the scroll position you left the list at* (`config/easygui-demo.json`, see `DemoConfig` + `DemoScreen.restoreScrollState`) — reopen the demo after a restart and it picks up exactly where you were.
+Dotted keys become nested JSON objects, so files stay organized and hand-editable. The demo persists its theme, accent color, frosted/font toggles, overlay visibility, slider value, *and the tab you left open* (`config/easygui-demo.json`, see `DemoConfig`) — reopen the demo after a restart and it picks up exactly where you were.
 
 ### Depending on EasyGUI from another Architectury mod
 

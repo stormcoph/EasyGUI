@@ -1,48 +1,69 @@
 package com.stormcph.easygui.client.demo;
 
 import com.stormcph.easygui.client.EasyGuiClient;
+import com.stormcph.easygui.client.chart.BarChart;
+import com.stormcph.easygui.client.chart.DonutChart;
+import com.stormcph.easygui.client.chart.Histogram;
+import com.stormcph.easygui.client.chart.LineChart;
+import com.stormcph.easygui.client.chart.RadarChart;
 import com.stormcph.easygui.client.font.Fonts;
 import com.stormcph.easygui.client.font.TrueTypeFont;
+import com.stormcph.easygui.client.media.AudioClip;
+import com.stormcph.easygui.client.media.EasyAudio;
 import com.stormcph.easygui.client.overlay.HudEditScreen;
+import com.stormcph.easygui.client.overlay.Toast;
+import com.stormcph.easygui.client.overlay.Toasts;
 import com.stormcph.easygui.client.render.Icons;
 import com.stormcph.easygui.client.render.Text2D;
 import com.stormcph.easygui.client.render.shader.Shaders;
 import com.stormcph.easygui.client.screen.EasyScreen;
+import com.stormcph.easygui.client.stat.Metrics;
 import com.stormcph.easygui.client.theme.Theme;
 import com.stormcph.easygui.client.widget.Button;
 import com.stormcph.easygui.client.widget.Checkbox;
+import com.stormcph.easygui.client.widget.CollapsibleSection;
 import com.stormcph.easygui.client.widget.ColorPickerButton;
+import com.stormcph.easygui.client.widget.ContextMenu;
 import com.stormcph.easygui.client.widget.CycleButton;
 import com.stormcph.easygui.client.widget.Divider;
 import com.stormcph.easygui.client.widget.Dropdown;
+import com.stormcph.easygui.client.widget.ImageView;
+import com.stormcph.easygui.client.widget.ItemView;
 import com.stormcph.easygui.client.widget.KeybindButton;
 import com.stormcph.easygui.client.widget.Label;
+import com.stormcph.easygui.client.widget.LinearLayout;
+import com.stormcph.easygui.client.widget.ModalDialog;
 import com.stormcph.easygui.client.widget.NumberStepper;
 import com.stormcph.easygui.client.widget.Panel;
+import com.stormcph.easygui.client.widget.PlayerView;
 import com.stormcph.easygui.client.widget.ProgressBar;
 import com.stormcph.easygui.client.widget.RangeSlider;
+import com.stormcph.easygui.client.widget.ReorderableList;
 import com.stormcph.easygui.client.widget.ScrollPanel;
 import com.stormcph.easygui.client.widget.SearchableDropdown;
 import com.stormcph.easygui.client.widget.SegmentedControl;
 import com.stormcph.easygui.client.widget.ShaderView;
 import com.stormcph.easygui.client.widget.Slider;
 import com.stormcph.easygui.client.widget.Spinner;
+import com.stormcph.easygui.client.widget.Tabs;
 import com.stormcph.easygui.client.widget.TextArea;
 import com.stormcph.easygui.client.widget.TextField;
 import com.stormcph.easygui.client.widget.ToggleSwitch;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 
 /**
- * Showcase screen for every EasyGUI widget. Open with F8 (rebindable under
- * Options &gt; Controls &gt; EasyGUI). Also serves as example code for the API.
- *
- * <p>The layout is responsive: on small GUI sizes (high GUI scale / small windows) the
- * two-column card collapses into a single scrolling column.</p>
+ * Showcase screen for every EasyGUI feature, organized into tabs (a {@link Tabs} widget,
+ * naturally). Open with F8 (rebindable under Options &gt; Controls &gt; EasyGUI). Also
+ * serves as example code for the API; the last-open tab persists via {@link DemoConfig}.
  */
 @Environment(EnvType.CLIENT)
 public class DemoScreen extends EasyScreen {
@@ -50,7 +71,7 @@ public class DemoScreen extends EasyScreen {
     private enum DemoQuality {LOW, MEDIUM, HIGH, ULTRA}
 
     private final ProgressBar progressBar = new ProgressBar();
-    private ScrollPanel persistedScroll;
+    private AudioClip clickClip;
 
     public DemoScreen() {
         super(Component.literal("EasyGUI Demo"));
@@ -58,12 +79,8 @@ public class DemoScreen extends EasyScreen {
 
     @Override
     protected void build(Panel root) {
-        // build() reruns on resize; keep the scroll position alive across rebuilds too
-        saveScrollState();
-
         float cardW = Math.min(470, width - 16);
         float cardH = Math.min(300, height - 16);
-        boolean wide = cardW >= 460 && cardH >= 290;
         float cx = (width - cardW) / 2f;
         float cy = (height - cardH) / 2f;
 
@@ -72,10 +89,10 @@ public class DemoScreen extends EasyScreen {
 
         // Header
         card.add(new Label("EasyGUI").setScale(1.4f))
-                .setBounds(cx + 18, cy + (wide ? 14 : 12), 120, 14);
-        if (wide) {
+                .setBounds(cx + 18, cy + 12, 120, 14);
+        if (cardW >= 430) {
             card.add(new Label("Clean, animated GUIs for Fabric & NeoForge").setMuted(true))
-                    .setBounds(cx + 18, cy + 30, 280, 10);
+                    .setBounds(cx + 110, cy + 17, 260, 10);
         }
         card.add(new Button(Icons.GEAR, () -> {
                     if (minecraft != null) {
@@ -83,119 +100,93 @@ public class DemoScreen extends EasyScreen {
                     }
                 }).setVariant(Button.Variant.GHOST))
                 .setTooltip("Edit HUD layout")
-                .setBounds(cx + cardW - 52, cy + 10, 20, 20);
+                .setBounds(cx + cardW - 52, cy + 8, 20, 20);
         card.add(new Button(Icons.CLOSE, this::closeWithAnimation).setVariant(Button.Variant.GHOST))
                 .setTooltip("Close")
-                .setBounds(cx + cardW - 30, cy + 10, 20, 20);
+                .setBounds(cx + cardW - 30, cy + 8, 20, 20);
 
         // Custom-shader accent strip (animated aurora gradient)
         card.add(new ShaderView(Shaders.AURORA).setRadius(1.5f))
                 .setTooltip("Custom shader (EasyShader + ShaderView)")
-                .setBounds(cx + 18, wide ? cy + 44 : cy + 32, cardW - 36, 3);
+                .setBounds(cx + 18, cy + 32, cardW - 36, 3);
 
-        if (wide) {
-            // The widget set outgrew the card, so the left column scrolls too
-            ScrollPanel controls = card.add(new ScrollPanel());
-            controls.setBounds(cx + 8, cy + 48, 222, cardH - 58);
-            addControls(controls, card, cx + 18, cy + 56, 200);
-
-            // Right column: smooth-scrolling list + liquid shader bar
-            float listX = cx + 240;
-            float listW = cardW - (listX - cx) - 18;
-            card.add(new Label("Scroll list").setMuted(true))
-                    .setBounds(listX, cy + 52, listW, 10);
-            ScrollPanel list = card.add(new ScrollPanel());
-            list.setCard(true);
-            list.setShadow(false);
-            list.setBackgroundColor(getTheme().surfaceVariant);
-            list.setBounds(listX, cy + 66, listW, cardH - 116);
-            float itemY = list.getY() + 6;
-            for (int i = 1; i <= 25; i++) {
-                final int n = i;
-                list.add(new Label("List entry " + n))
-                        .setBounds(listX + 10, itemY, listW - 70, 14);
-                list.add(new Button("Run", () -> {}).setVariant(Button.Variant.SECONDARY).setPlaySound(false))
-                        .setBounds(listX + listW - 48, itemY - 2, 36, 16);
-                itemY += 22;
-            }
-            addLiquidBar(card, listX, cy + cardH - 44, listW);
-            restoreScrollState(list);
-        } else {
-            // Compact: everything in a single scrolling column, liquid bar up top so the
-            // shader showcase is visible without scrolling
-            ScrollPanel content = card.add(new ScrollPanel());
-            content.setBounds(cx + 8, cy + 40, cardW - 16, cardH - 50);
-            float colX = cx + 18;
-            float colW = cardW - 36;
-            addLiquidBar(content, colX, content.getY() + 6, colW);
-            addControls(content, card, colX, content.getY() + 40, colW);
-            restoreScrollState(content);
-        }
+        Tabs tabs = card.add(new Tabs());
+        tabs.setBounds(cx + 8, cy + 40, cardW - 16, cardH - 48);
+        buildWidgetsTab(tabs.addTab("Widgets"), tabs, card);
+        buildInputsTab(tabs.addTab("Inputs"), tabs);
+        buildLayoutTab(tabs.addTab("Layout"), tabs);
+        buildChartsTab(tabs.addTab("Charts"), tabs);
+        buildHudTab(tabs.addTab("HUD"), tabs);
+        buildMediaTab(tabs.addTab("Media"), tabs);
+        tabs.persistTo(DemoConfig.LAST_TAB); // reopens on the tab you left
     }
 
-    /** Eases the scroll panel back to where it was last left (persisted UI state). */
-    private void restoreScrollState(ScrollPanel panel) {
-        persistedScroll = panel;
-        panel.scrollTo((float) (double) DemoConfig.LIST_SCROLL.get());
+    /** Adds a scrolling content panel filling a tab page; content uses absolute coords. */
+    private ScrollPanel pageScroll(Panel page, Tabs tabs) {
+        ScrollPanel scroll = page.add(new ScrollPanel());
+        scroll.setBounds(tabs.getX() + 2, tabs.contentY(), tabs.getWidth() - 4, tabs.contentHeight());
+        return scroll;
     }
 
-    private void saveScrollState() {
-        if (persistedScroll != null) {
-            DemoConfig.LIST_SCROLL.set((double) persistedScroll.getScrollAmount());
-        }
-    }
+    // ------------------------------------------------------------------
+    // Widgets — the classics, plus theming
+    // ------------------------------------------------------------------
 
-    @Override
-    public void removed() {
-        saveScrollState();
-        super.removed();
-    }
+    private void buildWidgetsTab(Panel page, Tabs tabs, Panel card) {
+        ScrollPanel content = pageScroll(page, tabs);
+        float x = tabs.getX() + 12;
+        float w = tabs.getWidth() - 24;
+        float rowY = tabs.contentY() + 8;
 
-    /** Adds the shared control rows to {@code parent}; returns the y after the last row. */
-    private float addControls(Panel parent, Panel card, float x, float y, float w) {
-        float rowY = y;
-
-        // Buttons
-        parent.add(new Button("Primary", () -> {}))
+        content.add(new Button("Primary", () -> {}))
                 .setBounds(x, rowY, 62, 20);
-        parent.add(new Button("Outline", () -> {}).setVariant(Button.Variant.SECONDARY))
+        content.add(new Button("Outline", () -> {}).setVariant(Button.Variant.SECONDARY))
                 .setBounds(x + 68, rowY, 62, 20);
-        parent.add(new Button(Icons.WARNING, () -> {}).setVariant(Button.Variant.DANGER))
+        content.add(new Button(Icons.WARNING, () -> {}).setVariant(Button.Variant.DANGER))
                 .setTooltip("Danger!")
                 .setBounds(x + 136, rowY, 24, 20);
-        rowY += 28;
+        content.add(new Spinner()).setBounds(x + w - 18, rowY + 1, 18, 18);
+        rowY += 26;
 
-        // Toggle + checkbox (the toggle persists via DemoConfig)
-        parent.add(new ToggleSwitch("HUD overlay", EasyGuiClient.DEMO_OVERLAY.isVisible(), v -> {
-                    EasyGuiClient.DEMO_OVERLAY.setVisible(v);
-                    DemoConfig.HUD_OVERLAY.set(v);
-                }))
-                .setTooltip("Shows the EasyGUI watermark overlay in-game")
+        content.add(new Checkbox("Animated check mark", true, v -> {}))
                 .setBounds(x, rowY, w, 16);
         rowY += 22;
-        parent.add(new Checkbox("Animated check mark", true, v -> {}))
-                .setBounds(x, rowY, w, 16);
-        rowY += 24;
 
         // Slider driving the progress bar; its value is remembered across sessions
-        parent.add(new Slider(0, 100, 1, DemoConfig.DEMO_PROGRESS.get() * 100, v -> {
+        content.add(new Slider(0, 100, 1, DemoConfig.DEMO_PROGRESS.get() * 100, v -> {
                     DemoConfig.DEMO_PROGRESS.set(v / 100.0);
                     progressBar.setProgress((float) (v / 100.0));
                 }).setValueFormatter(v -> (int) v + "%", 28))
                 .setBounds(x, rowY, w, 16);
-        rowY += 22;
-        parent.add(progressBar.setProgress((float) (double) DemoConfig.DEMO_PROGRESS.get()))
+        rowY += 20;
+        content.add(progressBar.setProgress((float) (double) DemoConfig.DEMO_PROGRESS.get()))
                 .setBounds(x, rowY, w, 4);
-        rowY += 14;
+        rowY += 12;
 
-        // Text input
-        parent.add(new TextField("Type something…"))
+        content.add(new TextField("Type something…"))
                 .setBounds(x, rowY, w, 20);
         rowY += 26;
 
+        // Icon strip
+        float ix = x;
+        for (var icon : List.of(Icons.SEARCH, Icons.GEAR, Icons.INFO, Icons.USER,
+                Icons.FOLDER, Icons.COPY, Icons.MENU, Icons.ARROW_RIGHT)) {
+            content.add(new Button(icon, () -> {}).setVariant(Button.Variant.GHOST).setPlaySound(false))
+                    .setBounds(ix, rowY, 18, 18);
+            ix += 21;
+        }
+        rowY += 24;
+
+        addLiquidBar(content, x, rowY, w);
+        rowY += 32;
+
+        content.add(new Divider("Theme"))
+                .setBounds(x, rowY, w, 10);
+        rowY += 16;
+
         // Dropdown switching themes live; the choice persists
         boolean isLight = DemoConfig.THEME.get() == DemoConfig.ThemeChoice.LIGHT;
-        parent.add(new Dropdown(List.of("Dark theme", "Light theme"), isLight ? 1 : 0, index -> {
+        content.add(new Dropdown(List.of("Dark theme", "Light theme"), isLight ? 1 : 0, index -> {
                     DemoConfig.THEME.set(index == 1
                             ? DemoConfig.ThemeChoice.LIGHT : DemoConfig.ThemeChoice.DARK);
                     Theme picked = index == 1 ? Theme.light() : Theme.dark();
@@ -204,28 +195,24 @@ public class DemoScreen extends EasyScreen {
                     setTheme(picked);
                 }))
                 .setBounds(x, rowY, w, 20);
-        rowY += 28;
+        rowY += 26;
 
-        // Icon strip + spinner
-        float ix = x;
-        for (var icon : List.of(Icons.SEARCH, Icons.GEAR, Icons.INFO, Icons.USER,
-                Icons.FOLDER, Icons.COPY, Icons.MENU, Icons.ARROW_RIGHT)) {
-            parent.add(new Button(icon, () -> {}).setVariant(Button.Variant.GHOST).setPlaySound(false))
-                    .setBounds(ix, rowY, 18, 18);
-            ix += 21;
-        }
-        parent.add(new Spinner()).setBounds(x + w - 18, rowY, 18, 18);
-        rowY += 24;
+        // Color picker driving the theme accent live; persists via defineColor
+        content.add(new ColorPickerButton("Accent color", DemoConfig.ACCENT.get(), c -> {
+                    DemoConfig.ACCENT.set(c);
+                    DemoConfig.applyAccent(getTheme());
+                }))
+                .setBounds(x, rowY, w, 20);
+        rowY += 26;
 
-        // Frosted glass + custom font toggles (both persisted)
-        parent.add(new ToggleSwitch("Frosted glass card", DemoConfig.FROSTED_CARD.get(), v -> {
+        content.add(new ToggleSwitch("Frosted glass card", DemoConfig.FROSTED_CARD.get(), v -> {
                     card.setFrosted(v);
                     DemoConfig.FROSTED_CARD.set(v);
                 }))
                 .setTooltip("Real shader blur of everything behind the panel")
                 .setBounds(x, rowY, w, 16);
         rowY += 22;
-        parent.add(new ToggleSwitch("Inter UI font (TTF)", Text2D.getUiFont() != null, on -> {
+        content.add(new ToggleSwitch("Inter UI font (TTF)", Text2D.getUiFont() != null, on -> {
                     DemoConfig.INTER_FONT.set(on);
                     if (on) {
                         TrueTypeFont inter = Fonts.inter();
@@ -238,62 +225,6 @@ public class DemoScreen extends EasyScreen {
                 }))
                 .setTooltip("Re-renders every widget with the bundled Inter TrueType font")
                 .setBounds(x, rowY, w, 16);
-        rowY += 22;
-
-        parent.add(new Divider("More widgets"))
-                .setBounds(x, rowY, w, 10);
-        rowY += 16;
-
-        // Segmented control: exclusive choice with a sliding accent pill
-        parent.add(new SegmentedControl(List.of("Fancy", "Fast", "Off"), 0, i -> {}))
-                .setBounds(x, rowY, w, 18);
-        rowY += 24;
-
-        // Range slider: drag either thumb to pick a min/max pair
-        parent.add(new RangeSlider(0, 100, 1, 20, 80, (lo, hi) -> {})
-                        .setValueFormatter((lo, hi) -> lo.intValue() + "–" + hi.intValue(), 34))
-                .setBounds(x, rowY, w, 16);
-        rowY += 22;
-
-        // Number stepper (click +/−, drag to scrub, click the number to type) + cycle button
-        parent.add(new NumberStepper(0, 64, 1, 16, v -> {}))
-                .setTooltip("Click +/−, drag the number to scrub, or click it to type")
-                .setBounds(x, rowY, 70, 18);
-        parent.add(CycleButton.ofEnum("Quality", DemoQuality.class, DemoQuality.HIGH, q -> {}))
-                .setTooltip("Right-click cycles backwards")
-                .setBounds(x + 76, rowY, w - 76, 18);
-        rowY += 24;
-
-        // Keybind rows — bind both to the same key to see conflict highlighting
-        parent.add(new KeybindButton("Bind A", GLFW.GLFW_KEY_G, k -> {}))
-                .setTooltip("Click, press a key or mouse button — right-click clears")
-                .setBounds(x, rowY, w / 2f - 4, 20);
-        parent.add(new KeybindButton("Bind B", GLFW.GLFW_KEY_H, k -> {}))
-                .setTooltip("Bind both to the same key to see the conflict highlight")
-                .setBounds(x + w / 2f + 4, rowY, w / 2f - 4, 20);
-        rowY += 26;
-
-        // Combo box with type-to-filter
-        parent.add(new SearchableDropdown(List.of("Andesite", "Basalt", "Calcite", "Deepslate",
-                        "Diorite", "Granite", "Gravel", "Obsidian", "Sandstone", "Tuff"), 0, i -> {}))
-                .setTooltip("Open it and type to filter")
-                .setBounds(x, rowY, w, 20);
-        rowY += 26;
-
-        // Color picker driving the theme accent live; persists via defineColor
-        parent.add(new ColorPickerButton("Accent color", DemoConfig.ACCENT.get(), c -> {
-                    DemoConfig.ACCENT.set(c);
-                    DemoConfig.applyAccent(getTheme());
-                }))
-                .setBounds(x, rowY, w, 20);
-        rowY += 26;
-
-        // Multiline text area
-        parent.add(new TextArea("Multiline notes — wraps, scrolls, selects…"))
-                .setBounds(x, rowY, w, 48);
-        rowY += 54;
-
-        return rowY;
     }
 
     /** The animated liquid shader as a panel background (Panel.setShaderBackground). */
@@ -306,5 +237,310 @@ public class DemoScreen extends EasyScreen {
         liquid.setBounds(x, y, w, 26);
         liquid.add(new Label("Liquid shader").setAlign(Label.Align.CENTER).setColor(0xFFFFFFFF))
                 .setBounds(x, y + 8, w, 10);
+    }
+
+    // ------------------------------------------------------------------
+    // Inputs — the richer input widgets
+    // ------------------------------------------------------------------
+
+    private void buildInputsTab(Panel page, Tabs tabs) {
+        ScrollPanel content = pageScroll(page, tabs);
+        float x = tabs.getX() + 12;
+        float w = tabs.getWidth() - 24;
+        float rowY = tabs.contentY() + 8;
+
+        content.add(new SegmentedControl(List.of("Fancy", "Fast", "Off"), 0, i -> {}))
+                .setBounds(x, rowY, w, 18);
+        rowY += 24;
+
+        content.add(new RangeSlider(0, 100, 1, 20, 80, (lo, hi) -> {})
+                        .setValueFormatter((lo, hi) -> lo.intValue() + "–" + hi.intValue(), 34))
+                .setBounds(x, rowY, w, 16);
+        rowY += 22;
+
+        content.add(new NumberStepper(0, 64, 1, 16, v -> {}))
+                .setTooltip("Click +/−, drag the number to scrub, or click it to type")
+                .setBounds(x, rowY, 70, 18);
+        content.add(CycleButton.ofEnum("Quality", DemoQuality.class, DemoQuality.HIGH, q -> {}))
+                .setTooltip("Right-click cycles backwards")
+                .setBounds(x + 76, rowY, w - 76, 18);
+        rowY += 24;
+
+        // Bind both to the same key to see conflict highlighting
+        content.add(new KeybindButton("Bind A", GLFW.GLFW_KEY_G, k -> {}))
+                .setTooltip("Click, press a key or mouse button — right-click clears")
+                .setBounds(x, rowY, w / 2f - 4, 20);
+        content.add(new KeybindButton("Bind B", GLFW.GLFW_KEY_H, k -> {}))
+                .setTooltip("Bind both to the same key to see the conflict highlight")
+                .setBounds(x + w / 2f + 4, rowY, w / 2f - 4, 20);
+        rowY += 26;
+
+        content.add(new SearchableDropdown(List.of("Andesite", "Basalt", "Calcite", "Deepslate",
+                        "Diorite", "Granite", "Gravel", "Obsidian", "Sandstone", "Tuff"), 0, i -> {}))
+                .setTooltip("Open it and type to filter")
+                .setBounds(x, rowY, w, 20);
+        rowY += 26;
+
+        content.add(new TextArea("Multiline notes — wraps, scrolls, selects…"))
+                .setBounds(x, rowY, w, 48);
+    }
+
+    // ------------------------------------------------------------------
+    // Layout — containers, dialogs, menus
+    // ------------------------------------------------------------------
+
+    private void buildLayoutTab(Panel page, Tabs tabs) {
+        ScrollPanel content = pageScroll(page, tabs);
+        float x = tabs.getX() + 12;
+        float w = tabs.getWidth() - 24;
+        float half = w / 2f - 6;
+        float rowY = tabs.contentY() + 8;
+
+        // LinearLayout: no manual row math — STRETCH width, auto gaps
+        LinearLayout column = content.add(LinearLayout.vertical()
+                .setGap(5f)
+                .setPadding(8f)
+                .setAlign(LinearLayout.Align.STRETCH));
+        column.setCard(true);
+        column.setShadow(false);
+        column.setBounds(x, rowY, half, 96);
+        column.add(new Label("LinearLayout").setMuted(true)).setSize(0, 10);
+        column.add(new Slider(0, 100, 1, 40, v -> {})).setSize(0, 16);
+        LinearLayout buttons = LinearLayout.horizontal().setGap(4f).setAutoSize(true);
+        buttons.add(new Button("OK", () -> {})).setSize(44, 16);
+        buttons.add(new Button("Cancel", () -> {}).setVariant(Button.Variant.SECONDARY)).setSize(52, 16);
+        column.add(buttons);
+
+        // CollapsibleSection: animated height reflows neighbors; state persists
+        CollapsibleSection section = content.add(new CollapsibleSection("Collapsible section"));
+        section.persistTo(DemoConfig.SECTION_OPEN);
+        section.setBounds(x + half + 12, rowY, half, 0);
+        float sy = section.contentTop() + 4;
+        section.add(new ToggleSwitch("Nested toggle", true, v -> {}))
+                .setBounds(section.getX() + 8, sy, half - 16, 16);
+        section.add(new Checkbox("Nested checkbox", false, v -> {}))
+                .setBounds(section.getX() + 8, sy + 22, half - 16, 16);
+        rowY += 104;
+
+        // ReorderableList: drag rows to reorder, Esc cancels
+        ReorderableList list = content.add(new ReorderableList());
+        list.setCard(true);
+        list.setShadow(false);
+        list.setRowGap(4f).setOnReorder((from, to) -> {});
+        list.setBounds(x, rowY, half, 88);
+        for (String task : new String[]{"Mine diamonds", "Build base", "Fight dragon"}) {
+            Panel row = new Panel().setCard(true);
+            row.setShadow(false);
+            row.setBounds(0, 0, 0, 20);
+            row.add(new Label(task)).setBounds(8, 6, half - 30, 9);
+            list.addItem(row);
+        }
+
+        // Modal dialogs + context menu, on the popup layer
+        content.add(new Button("Alert", () ->
+                        ModalDialog.alert(this, "Heads up", "This is a modal alert on the popup layer.", null)))
+                .setBounds(x + half + 12, rowY, half / 2f - 3, 20);
+        content.add(new Button("Confirm", () ->
+                        ModalDialog.confirmDanger(this, "Reset everything",
+                                "This would reset all demo settings. It cannot be undone. Proceed?",
+                                () -> Toasts.show(Toast.success("Reset!").withBody("(Not really — it's a demo.)"))))
+                        .setVariant(Button.Variant.SECONDARY))
+                .setBounds(x + half + 12 + half / 2f + 3, rowY, half / 2f - 3, 20);
+        content.add(new Label("Right-click me for a context menu") {
+                    @Override
+                    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+                        if (button == 1 && contains(mouseX, mouseY)) {
+                            new ContextMenu()
+                                    .addItem("Copy", Icons.COPY, () -> {})
+                                    .addItem("Rename", () -> {})
+                                    .addDivider()
+                                    .addDisabledItem("Share (soon)")
+                                    .addDangerItem("Delete", () -> {})
+                                    .open(getScreen(), (float) mouseX, (float) mouseY);
+                            return true;
+                        }
+                        return false;
+                    }
+                }.setMuted(true))
+                .setBounds(x + half + 12, rowY + 26, half, 12);
+        rowY += 94;
+
+        content.add(new Divider())
+                .setBounds(x, rowY, w, 8);
+    }
+
+    // ------------------------------------------------------------------
+    // Charts — live data from the stats layer
+    // ------------------------------------------------------------------
+
+    private void buildChartsTab(Panel page, Tabs tabs) {
+        ScrollPanel content = pageScroll(page, tabs);
+        float x = tabs.getX() + 12;
+        float w = tabs.getWidth() - 24;
+        float half = w / 2f - 6;
+        float rowY = tabs.contentY() + 8;
+
+        LineChart line = content.add(new LineChart()
+                .addSeries("fps", Metrics.fps().series())
+                .addSeries("ping", Metrics.ping().series())
+                .setTimeWindow(30)
+                .setShowLegend(true)
+                .setShowAxisLabels(true)
+                .setFill(true)
+                .setSmooth(true));
+        line.setBounds(x, rowY, w, 84);
+        rowY += 90;
+
+        BarChart bars = content.add(new BarChart());
+        bars.setData(List.of("stone", "iron", "gold", "diam"), new float[]{120, 45, 12, 3});
+        bars.setShowValues(true);
+        bars.setBounds(x, rowY, half, 76);
+
+        Histogram hist = content.add(new Histogram(Metrics.fps().series()));
+        hist.setBins(0).setTimeWindow(30).setShowStats(true);
+        hist.setBounds(x + half + 12, rowY, half, 76);
+        rowY += 82;
+
+        float maxHeapMb = Runtime.getRuntime().maxMemory() / (1024f * 1024f);
+        DonutChart gauge = content.add(new DonutChart()
+                .setGauge(0, maxHeapMb)
+                .setValue(() -> Metrics.memory().value())
+                .setDangerFrom(0.8f)
+                .setCenterText(() -> Math.round(Metrics.memory().value()) + "M")
+                .setCenterLabel("heap"));
+        gauge.setBounds(x, rowY, 72, 72);
+
+        RadarChart radar = content.add(new RadarChart()
+                .setAxes(List.of("atk", "def", "spd", "hp", "luck"))
+                .addSeries("player", new float[]{0.8f, 0.55f, 0.35f, 0.9f, 0.5f}));
+        radar.setBounds(x + 96, rowY - 4, 120, 80);
+
+        content.add(new Label("Everything animates: scales glide,").setMuted(true))
+                .setBounds(x + 232, rowY + 22, w - 232, 10);
+        content.add(new Label("bars grow, the gauge sweeps.").setMuted(true))
+                .setBounds(x + 232, rowY + 34, w - 232, 10);
+    }
+
+    // ------------------------------------------------------------------
+    // HUD — overlays, editor, toasts
+    // ------------------------------------------------------------------
+
+    private void buildHudTab(Panel page, Tabs tabs) {
+        ScrollPanel content = pageScroll(page, tabs);
+        float x = tabs.getX() + 12;
+        float w = tabs.getWidth() - 24;
+        float rowY = tabs.contentY() + 8;
+
+        content.add(new Label("Overlays — drag, restyle, and rescale them in the HUD editor").setMuted(true))
+                .setBounds(x, rowY, w, 10);
+        rowY += 16;
+
+        content.add(new ToggleSwitch("Watermark", EasyGuiClient.DEMO_OVERLAY.isVisible(), v -> {
+                    EasyGuiClient.DEMO_OVERLAY.setVisible(v);
+                    DemoConfig.HUD_OVERLAY.set(v);
+                }))
+                .setBounds(x, rowY, w, 16);
+        rowY += 22;
+        content.add(new ToggleSwitch("Info line — {fps} · {coords} · {clock}", DemoHud.info.isVisible(), v -> {
+                    DemoHud.info.setVisible(v);
+                    DemoConfig.HUD_TEXT.set(v);
+                }))
+                .setTooltip("TextElement with the placeholder registry, two-tone colors, frosted plate")
+                .setBounds(x, rowY, w, 16);
+        rowY += 22;
+        content.add(new ToggleSwitch("Module list", DemoHud.modules.isVisible(), v -> {
+                    DemoHud.modules.setVisible(v);
+                    DemoConfig.HUD_MODULES.set(v);
+                }))
+                .setTooltip("AnimatedListOverlay: width-sorted, animated, per-row colors")
+                .setBounds(x, rowY, w, 16);
+        rowY += 22;
+        content.add(new ToggleSwitch("FPS sparkline", DemoHud.fpsChart.isVisible(), v -> {
+                    DemoHud.fpsChart.setVisible(v);
+                    DemoConfig.HUD_CHART.set(v);
+                }))
+                .setTooltip("A chart widget on the HUD, via WidgetHostOverlay")
+                .setBounds(x, rowY, w, 16);
+        rowY += 24;
+
+        content.add(new Divider())
+                .setBounds(x, rowY, w, 8);
+        rowY += 14;
+
+        content.add(new Button("Edit HUD layout", () -> {
+                    if (minecraft != null) {
+                        minecraft.setScreen(new HudEditScreen(this));
+                    }
+                }))
+                .setBounds(x, rowY, 110, 20);
+        content.add(new Button("Toast", () ->
+                        Toasts.show(Toast.success("Config saved").withBody("Your changes were written to disk.")))
+                        .setVariant(Button.Variant.SECONDARY))
+                .setBounds(x + 116, rowY, 64, 20);
+        content.add(new Button("Error toast", () ->
+                        Toasts.show(Toast.error("Connection lost").withDuration(6)))
+                        .setVariant(Button.Variant.SECONDARY))
+                .setBounds(x + 186, rowY, 84, 20);
+        rowY += 26;
+
+        content.add(new Label("Toasts stack over the in-game HUD — close this screen to see them clearly.")
+                        .setMuted(true))
+                .setBounds(x, rowY, w, 10);
+    }
+
+    // ------------------------------------------------------------------
+    // Media — items, entities, images, audio
+    // ------------------------------------------------------------------
+
+    private void buildMediaTab(Panel page, Tabs tabs) {
+        ScrollPanel content = pageScroll(page, tabs);
+        float x = tabs.getX() + 12;
+        float w = tabs.getWidth() - 24;
+        float rowY = tabs.contentY() + 8;
+
+        content.add(new ItemView(() -> {
+                    var player = Minecraft.getInstance().player;
+                    return player != null ? player.getMainHandItem() : ItemStack.EMPTY;
+                })
+                        .setSlotBackground(true)
+                        .setTooltipFromItem(true))
+                .setBounds(x, rowY, 36, 36);
+        content.add(new ItemView(new ItemStack(Items.DIAMOND_SWORD))
+                        .setShowDecorations(false)
+                        .setSlotBackground(true)
+                        .setTooltipFromItem(true))
+                .setBounds(x, rowY + 42, 36, 36);
+        content.add(new Label("ItemView:").setMuted(true))
+                .setBounds(x + 42, rowY + 8, 76, 10);
+        content.add(new Label("live main hand").setMuted(true))
+                .setBounds(x + 42, rowY + 20, 76, 10);
+        content.add(new Label("+ fixed stack").setMuted(true))
+                .setBounds(x + 42, rowY + 32, 76, 10);
+
+        content.add(new PlayerView().setCardBackground(true))
+                .setTooltip("PlayerView — follows the mouse")
+                .setBounds(x + 124, rowY, 64, 96);
+
+        content.add(new ImageView(ResourceLocation.withDefaultNamespace("textures/gui/title/minecraft.png"))
+                        .setFit(ImageView.Fit.CONTAIN))
+                .setTooltip("ImageView — resource, file, or URL sources, async, rounded clipping")
+                .setBounds(x + 200, rowY, w - 200, 52);
+        content.add(new Label("GifView and VideoView load animated").setMuted(true))
+                .setBounds(x + 200, rowY + 58, w - 200, 10);
+        content.add(new Label("media from files or URLs — see docs.").setMuted(true))
+                .setBounds(x + 200, rowY + 70, w - 200, 10);
+        rowY += 104;
+
+        content.add(new Button("Play sound", () -> {
+                    if (clickClip == null) {
+                        clickClip = AudioClip.fromResource(
+                                ResourceLocation.withDefaultNamespace("sounds/ui/button/click.ogg"));
+                    }
+                    EasyAudio.play(clickClip).setVolume(0.7f).setPitch(1.2f);
+                }).setVariant(Button.Variant.SECONDARY))
+                .setTooltip("EasyAudio: WAV + OGG via OpenAL/stb_vorbis, MP3 via bundled JLayer")
+                .setBounds(x, rowY, 90, 20);
+        content.add(new Label("AudioClip + EasyAudio — decoded off-thread, played through OpenAL").setMuted(true))
+                .setBounds(x + 98, rowY + 5, w - 98, 10);
     }
 }

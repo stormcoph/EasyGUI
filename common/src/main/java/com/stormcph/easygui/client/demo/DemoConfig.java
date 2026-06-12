@@ -33,10 +33,18 @@ public final class DemoConfig {
             CONFIG.defineColor("appearance.accent", 0xFF5B8CFF);
     public static final ConfigValue<Boolean> HUD_OVERLAY =
             CONFIG.defineBool("overlay.visible", false);
+    public static final ConfigValue<Boolean> HUD_TEXT =
+            CONFIG.defineBool("overlay.info_text", false);
+    public static final ConfigValue<Boolean> HUD_MODULES =
+            CONFIG.defineBool("overlay.module_list", false);
+    public static final ConfigValue<Boolean> HUD_CHART =
+            CONFIG.defineBool("overlay.fps_chart", false);
     public static final ConfigValue<Double> DEMO_PROGRESS =
             CONFIG.defineDouble("state.progress", 0.65, 0.0, 1.0);
-    public static final ConfigValue<Double> LIST_SCROLL =
-            CONFIG.defineDouble("state.list_scroll", 0.0);
+    public static final ConfigValue<Integer> LAST_TAB =
+            CONFIG.defineInt("state.last_tab", 0);
+    public static final ConfigValue<Boolean> SECTION_OPEN =
+            CONFIG.defineBool("state.demo_section_open", true);
 
     private DemoConfig() {
     }
