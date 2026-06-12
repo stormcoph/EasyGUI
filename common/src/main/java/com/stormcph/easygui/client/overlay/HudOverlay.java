@@ -19,6 +19,7 @@ public abstract class HudOverlay {
     protected float offsetX = 6f;
     protected float offsetY = 6f;
     protected boolean visible = true;
+    private String persistId;
 
     public HudOverlay setAnchor(Anchor anchor) {
         this.anchor = anchor;
@@ -29,6 +30,28 @@ public abstract class HudOverlay {
         this.offsetX = offsetX;
         this.offsetY = offsetY;
         return this;
+    }
+
+    public float getOffsetX() {
+        return offsetX;
+    }
+
+    public float getOffsetY() {
+        return offsetY;
+    }
+
+    /**
+     * Opts this overlay into position persistence: with an id set <em>before registering</em>,
+     * its anchor/offsets load from {@code config/easygui.json} and any change made in the
+     * HUD editor (see {@link HudEditScreen}) is saved automatically.
+     */
+    public HudOverlay setPersistId(String persistId) {
+        this.persistId = persistId;
+        return this;
+    }
+
+    public String getPersistId() {
+        return persistId;
     }
 
     public boolean isVisible() {

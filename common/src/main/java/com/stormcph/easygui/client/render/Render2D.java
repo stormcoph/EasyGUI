@@ -7,26 +7,34 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import com.stormcph.easygui.client.render.shader.EasyShader;
+import com.stormcph.easygui.client.render.shader.ShaderFit;
+import com.stormcph.easygui.client.render.shader.Shaders;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * The EasyGUI 2D rendering core.
  *
- * <p>Everything here renders with plain {@code position_color} / {@code position_tex_color}
- * shaders and triangle geometry, so it works identically on Fabric and NeoForge with no
- * custom shader pipeline. Curved shapes are tessellated with a sub-pixel "feather" ring
- * around their silhouette which fades to transparent, giving smooth anti-aliased edges
- * at any GUI scale.</p>
+ * <p>Shapes render with plain {@code position_color} / {@code position_tex_color} shaders
+ * and triangle geometry, so they work identically on Fabric and NeoForge. Curved shapes are
+ * tessellated with a sub-pixel "feather" ring around their silhouette which fades to
+ * transparent, giving smooth anti-aliased edges at any GUI scale. On top of that sit
+ * optional shader-driven fills: {@code shadedRect}/{@code shadedRoundedRect} draw with a
+ * custom {@link EasyShader}, and {@code fillRoundedRectBlurred} draws real frosted-glass
+ * blur (see {@link Blur}) — both degrade gracefully if a shader fails to compile.</p>
  *
  * <p>All coordinates are in GUI space (the same space {@link GuiGraphics} uses) and respect
  * the current pose transformations. Colors are packed ARGB.</p>
@@ -474,11 +482,23 @@ public final class Render2D {
      */
     public static void dropShadow(GuiGraphics graphics, float x, float y, float width, float height,
                                   float radius, float size, int color) {
+        dropShadow(graphics, x, y, width, height, radius, size, color, true);
+    }
+
+    /**
+     * Drop shadow with control over the area under the rectangle: pass {@code includeBase=false}
+     * to draw only the outer halo ring — needed under translucent fills like frosted glass,
+     * where a solid shadow base would darken what shows through.
+     */
+    public static void dropShadow(GuiGraphics graphics, float x, float y, float width, float height,
+                                  float radius, float size, int color, boolean includeBase) {
         int baseAlpha = ColorUtil.alpha(color);
         if (width <= 0 || height <= 0 || size <= 0 || baseAlpha == 0 || globalAlpha <= 0f) {
             return;
         }
-        fillRoundedRect(graphics, x, y, width, height, radius, color);
+        if (includeBase) {
+            fillRoundedRect(graphics, x, y, width, height, radius, color);
+        }
 
         int layers = Mth.clamp((int) (size * guiScale() * 0.75f), 4, 20);
         float prev = 0f;
@@ -496,6 +516,142 @@ public final class Render2D {
             }
             prev = expand;
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Background blur (frosted glass)
+    // ------------------------------------------------------------------
+
+    /**
+     * Fills a rectangle with a real gaussian blur of everything rendered behind it so far
+     * (see {@link Blur}). Returns {@code false} when the blur shaders are unavailable, so
+     * callers can fall back to a solid fill.
+     *
+     * @param blurRadius approximate blur radius in GUI pixels
+     * @param tint       overlay color; its alpha is how strongly the tint covers the blur
+     *                   (use {@code 0} for plain glass)
+     */
+    public static boolean fillRectBlurred(GuiGraphics graphics, float x, float y, float width, float height,
+                                          float blurRadius, int tint) {
+        return fillRoundedRectBlurred(graphics, x, y, width, height, 0f, blurRadius, tint);
+    }
+
+    /**
+     * Rounded rectangle filled with a real gaussian blur of everything behind it — the
+     * "frosted glass" look. The silhouette gets the same feathered anti-aliased edge as
+     * {@link #fillRoundedRect}, and the fill respects pose transforms and global alpha.
+     * Returns {@code false} when the blur shaders are unavailable (caller should fall back
+     * to a solid fill).
+     */
+    public static boolean fillRoundedRectBlurred(GuiGraphics graphics, float x, float y, float width, float height,
+                                                 float radius, float blurRadius, int tint) {
+        if (width <= 0 || height <= 0 || globalAlpha <= 0.004f) {
+            return true; // nothing to draw, but not a shader failure
+        }
+        int blurredTexture = Blur.capture(blurRadius);
+        if (blurredTexture < 0) {
+            return false;
+        }
+        ShaderInstance fill = Blur.FILL.get();
+        RenderSystem.setShaderTexture(0, blurredTexture);
+        fill.safeGetUniform("TintAlpha").set(ColorUtil.alpha(tint) / 255f);
+        // Vertex RGB carries the tint color; vertex alpha carries shape coverage (the
+        // feather ring fades it to 0) multiplied by the global alpha.
+        int coverage = (tint & 0x00FFFFFF) | (Mth.clamp((int) (globalAlpha * 255f), 0, 255) << 24);
+        List<float[]> pts = roundedPerimeter(x, y, width, height, radius, radius, radius, radius);
+        fillPerimeter(graphics, pts, x + width / 2f, y + height / 2f, (px, py) -> coverage, Blur.FILL);
+        return true;
+    }
+
+    // ------------------------------------------------------------------
+    // Custom shader fills
+    // ------------------------------------------------------------------
+
+    /** Rectangle drawn with a custom {@link EasyShader}, no tint, no extra uniforms. */
+    public static void shadedRect(GuiGraphics graphics, EasyShader shader, float x, float y,
+                                  float width, float height) {
+        shadedRect(graphics, shader, x, y, width, height, 0xFFFFFFFF, null);
+    }
+
+    /**
+     * Rectangle drawn with a custom {@link EasyShader} (vertex format
+     * {@code POSITION_TEX_COLOR}). A {@code Time} uniform, if declared, is set to
+     * {@link Shaders#timeSeconds()}; set anything else in {@code uniforms} (may be
+     * {@code null}). The tint arrives as the vertex color. The shader pattern is mapped
+     * with {@link ShaderFit#COVER} ("zoom to fill") — use the overload to pick another fit.
+     */
+    public static void shadedRect(GuiGraphics graphics, EasyShader shader, float x, float y,
+                                  float width, float height, int tint, Consumer<ShaderInstance> uniforms) {
+        shadedRect(graphics, shader, x, y, width, height, tint, uniforms, ShaderFit.COVER);
+    }
+
+    /** {@link #shadedRect(GuiGraphics, EasyShader, float, float, float, float, int, Consumer)}
+     * with an explicit aspect-ratio {@link ShaderFit}. */
+    public static void shadedRect(GuiGraphics graphics, EasyShader shader, float x, float y,
+                                  float width, float height, int tint, Consumer<ShaderInstance> uniforms,
+                                  ShaderFit fit) {
+        int c = applyGlobalAlpha(tint);
+        if (width <= 0 || height <= 0 || ColorUtil.alpha(c) == 0) {
+            return;
+        }
+        ShaderInstance instance = prepareShader(shader, uniforms);
+        if (instance == null) {
+            return;
+        }
+        float[] uv = fit.uvRect(width, height);
+        Matrix4f mat = graphics.pose().last().pose();
+        BufferBuilder buffer = beginShaded(shader);
+        buffer.addVertex(mat, x, y, 0).setUv(uv[0], uv[1]).setColor(c);
+        buffer.addVertex(mat, x, y + height, 0).setUv(uv[0], uv[3]).setColor(c);
+        buffer.addVertex(mat, x + width, y + height, 0).setUv(uv[2], uv[3]).setColor(c);
+        buffer.addVertex(mat, x, y, 0).setUv(uv[0], uv[1]).setColor(c);
+        buffer.addVertex(mat, x + width, y + height, 0).setUv(uv[2], uv[3]).setColor(c);
+        buffer.addVertex(mat, x + width, y, 0).setUv(uv[2], uv[1]).setColor(c);
+        end(buffer);
+    }
+
+    /**
+     * Rounded rectangle drawn with a custom {@link EasyShader}, with feathered anti-aliased
+     * corners. Same contract as {@link #shadedRect(GuiGraphics, EasyShader, float, float,
+     * float, float, int, Consumer)}, including the {@link ShaderFit#COVER} default.
+     */
+    public static void shadedRoundedRect(GuiGraphics graphics, EasyShader shader, float x, float y,
+                                         float width, float height, float radius, int tint,
+                                         Consumer<ShaderInstance> uniforms) {
+        shadedRoundedRect(graphics, shader, x, y, width, height, radius, tint, uniforms, ShaderFit.COVER);
+    }
+
+    /** {@link #shadedRoundedRect(GuiGraphics, EasyShader, float, float, float, float, float,
+     * int, Consumer)} with an explicit aspect-ratio {@link ShaderFit}. */
+    public static void shadedRoundedRect(GuiGraphics graphics, EasyShader shader, float x, float y,
+                                         float width, float height, float radius, int tint,
+                                         Consumer<ShaderInstance> uniforms, ShaderFit fit) {
+        int c = applyGlobalAlpha(tint);
+        if (width <= 0 || height <= 0 || ColorUtil.alpha(c) == 0) {
+            return;
+        }
+        ShaderInstance instance = prepareShader(shader, uniforms);
+        if (instance == null) {
+            return;
+        }
+        float[] uv = fit.uvRect(width, height);
+        BufferBuilder buffer = beginShaded(shader);
+        roundedTexturedMesh(buffer, graphics.pose().last().pose(), x, y, width, height, radius, c,
+                uv[0], uv[1], uv[2], uv[3]);
+        end(buffer);
+    }
+
+    /** Compiles/fetches the shader and applies the standard {@code Time} uniform plus user uniforms. */
+    private static ShaderInstance prepareShader(EasyShader shader, Consumer<ShaderInstance> uniforms) {
+        ShaderInstance instance = shader.get();
+        if (instance == null) {
+            return null;
+        }
+        instance.safeGetUniform("Time").set(Shaders.timeSeconds());
+        if (uniforms != null) {
+            uniforms.accept(instance);
+        }
+        return instance;
     }
 
     // ------------------------------------------------------------------
@@ -536,21 +692,34 @@ public final class Render2D {
         if (width <= 0 || height <= 0 || ColorUtil.alpha(c) == 0) {
             return;
         }
+        BufferBuilder buffer = beginTextured(texture);
+        roundedTexturedMesh(buffer, graphics.pose().last().pose(), x, y, width, height, radius, c,
+                0f, 0f, 1f, 1f);
+        end(buffer);
+    }
+
+    /**
+     * Emits the feathered rounded-rect mesh with UVs mapped across the bounds into the
+     * {@code [u0..u1, v0..v1]} rectangle, into an already-begun {@code POSITION_TEX_COLOR}
+     * buffer.
+     */
+    private static void roundedTexturedMesh(BufferBuilder buffer, Matrix4f mat, float x, float y,
+                                            float width, float height, float radius, int c,
+                                            float u0, float v0, float u1, float v1) {
         List<float[]> pts = roundedPerimeter(x, y, width, height, radius, radius, radius, radius);
         float cx = x + width / 2f;
         float cy = y + height / 2f;
         float f = feather();
         int c0 = c & 0x00FFFFFF;
-
-        Matrix4f mat = graphics.pose().last().pose();
-        BufferBuilder buffer = beginTextured(texture);
+        float uScale = (u1 - u0) / width;
+        float vScale = (v1 - v0) / height;
         int n = pts.size();
         for (int i = 0; i < n; i++) {
             float[] a = pts.get(i);
             float[] b = pts.get((i + 1) % n);
-            texVertex(buffer, mat, cx, cy, x, y, width, height, c);
-            texVertex(buffer, mat, a[0], a[1], x, y, width, height, c);
-            texVertex(buffer, mat, b[0], b[1], x, y, width, height, c);
+            texVertex(buffer, mat, cx, cy, cx, cy, x, y, u0, v0, uScale, vScale, c);
+            texVertex(buffer, mat, a[0], a[1], a[0], a[1], x, y, u0, v0, uScale, vScale, c);
+            texVertex(buffer, mat, b[0], b[1], b[0], b[1], x, y, u0, v0, uScale, vScale, c);
         }
         // Feather ring (UVs clamped at the silhouette)
         for (int i = 0; i < n; i++) {
@@ -560,29 +729,22 @@ public final class Render2D {
             float ay = a[1] + a[3] * f;
             float bx = b[0] + b[2] * f;
             float by = b[1] + b[3] * f;
-            texVertexColored(buffer, mat, a[0], a[1], x, y, width, height, c);
-            texVertexAt(buffer, mat, ax, ay, a[0], a[1], x, y, width, height, c0);
-            texVertexAt(buffer, mat, bx, by, b[0], b[1], x, y, width, height, c0);
-            texVertexColored(buffer, mat, a[0], a[1], x, y, width, height, c);
-            texVertexAt(buffer, mat, bx, by, b[0], b[1], x, y, width, height, c0);
-            texVertexColored(buffer, mat, b[0], b[1], x, y, width, height, c);
+            texVertex(buffer, mat, a[0], a[1], a[0], a[1], x, y, u0, v0, uScale, vScale, c);
+            texVertex(buffer, mat, ax, ay, a[0], a[1], x, y, u0, v0, uScale, vScale, c0);
+            texVertex(buffer, mat, bx, by, b[0], b[1], x, y, u0, v0, uScale, vScale, c0);
+            texVertex(buffer, mat, a[0], a[1], a[0], a[1], x, y, u0, v0, uScale, vScale, c);
+            texVertex(buffer, mat, bx, by, b[0], b[1], x, y, u0, v0, uScale, vScale, c0);
+            texVertex(buffer, mat, b[0], b[1], b[0], b[1], x, y, u0, v0, uScale, vScale, c);
         }
-        end(buffer);
     }
 
+    /** Vertex at {@code (px, py)} whose UV comes from mapping {@code (uvx, uvy)} through the UV rect. */
     private static void texVertex(BufferBuilder buffer, Matrix4f mat, float px, float py,
-                                  float x, float y, float w, float h, int color) {
-        buffer.addVertex(mat, px, py, 0).setUv((px - x) / w, (py - y) / h).setColor(color);
-    }
-
-    private static void texVertexColored(BufferBuilder buffer, Matrix4f mat, float px, float py,
-                                         float x, float y, float w, float h, int color) {
-        texVertex(buffer, mat, px, py, x, y, w, h, color);
-    }
-
-    private static void texVertexAt(BufferBuilder buffer, Matrix4f mat, float px, float py,
-                                    float uvx, float uvy, float x, float y, float w, float h, int color) {
-        buffer.addVertex(mat, px, py, 0).setUv((uvx - x) / w, (uvy - y) / h).setColor(color);
+                                  float uvx, float uvy, float x, float y,
+                                  float u0, float v0, float uScale, float vScale, int color) {
+        buffer.addVertex(mat, px, py, 0)
+                .setUv(u0 + (uvx - x) * uScale, v0 + (uvy - y) * vScale)
+                .setColor(color);
     }
 
     // ------------------------------------------------------------------
@@ -630,11 +792,23 @@ public final class Render2D {
     }
 
     private static BufferBuilder beginColor() {
+        return beginColor(GameRenderer::getPositionColorShader);
+    }
+
+    private static BufferBuilder beginColor(Supplier<ShaderInstance> shader) {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.disableCull();
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        RenderSystem.setShader(shader);
         return Tesselator.getInstance().begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.POSITION_COLOR);
+    }
+
+    private static BufferBuilder beginShaded(Supplier<ShaderInstance> shader) {
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableCull();
+        RenderSystem.setShader(shader);
+        return Tesselator.getInstance().begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.POSITION_TEX_COLOR);
     }
 
     private static BufferBuilder beginTextured(ResourceLocation texture) {
@@ -733,8 +907,18 @@ public final class Render2D {
 
     /** Fills a convex perimeter by fanning from a center point, then feathers the silhouette. */
     private static void fillPerimeter(GuiGraphics graphics, List<float[]> pts, float cx, float cy, ColorAt color) {
+        fillPerimeter(graphics, pts, cx, cy, color, null);
+    }
+
+    /**
+     * Like {@link #fillPerimeter(GuiGraphics, List, float, float, ColorAt)} but drawn with a
+     * custom {@code POSITION_COLOR} shader instead of the vanilla one (pass {@code null} for
+     * vanilla).
+     */
+    private static void fillPerimeter(GuiGraphics graphics, List<float[]> pts, float cx, float cy, ColorAt color,
+                                      Supplier<ShaderInstance> shader) {
         Matrix4f mat = graphics.pose().last().pose();
-        BufferBuilder buffer = beginColor();
+        BufferBuilder buffer = shader == null ? beginColor() : beginColor(shader);
         int n = pts.size();
         int centerColor = color.get(cx, cy);
         for (int i = 0; i < n; i++) {

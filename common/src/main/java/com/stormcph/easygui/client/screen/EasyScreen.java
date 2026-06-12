@@ -4,23 +4,28 @@ import com.stormcph.easygui.client.animation.SmoothValue;
 import com.stormcph.easygui.client.render.ColorUtil;
 import com.stormcph.easygui.client.render.Render2D;
 import com.stormcph.easygui.client.render.Text2D;
+import com.stormcph.easygui.client.render.shader.EasyShader;
+import com.stormcph.easygui.client.render.shader.ShaderFit;
 import com.stormcph.easygui.client.theme.Theme;
 import com.stormcph.easygui.client.widget.Panel;
 import com.stormcph.easygui.client.widget.Widget;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.client.gui.screens.Screen;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.function.Consumer;
 
 /**
  * Base class for EasyGUI screens.
  *
  * <p>Build your UI in {@link #build(Panel)} by adding widgets to the root panel.
- * The screen handles open/close fade+scale animations, the background dim (and vanilla's
- * menu blur when in a world), focus management, popup routing (e.g. dropdown lists),
- * and tooltip rendering.</p>
+ * The screen handles open/close fade+scale animations, the background dim and real
+ * shader blur (animated with the transition; panorama backdrop outside worlds), focus
+ * management, popup routing (e.g. dropdown lists), and tooltip rendering.</p>
  *
  * <pre>{@code
  * public class MyScreen extends EasyScreen {
@@ -47,6 +52,11 @@ public abstract class EasyScreen extends Screen {
     private Widget popupWidget;
     private boolean closing;
     private boolean backgroundBlur = true;
+    private boolean backgroundDim = true;
+    private float backgroundBlurRadius = 8f;
+    private EasyShader backgroundShader;
+    private Consumer<ShaderInstance> backgroundShaderUniforms;
+    private ShaderFit backgroundShaderFit = ShaderFit.COVER;
 
     private String tooltipText;
     private float tooltipX;
@@ -71,9 +81,45 @@ public abstract class EasyScreen extends Screen {
         return this;
     }
 
-    /** Whether to apply vanilla's menu blur to the world behind this screen. */
+    /**
+     * Whether to blur what's behind this screen. Uses EasyGUI's shader blur (animated with
+     * the open/close transition); falls back to vanilla's menu blur if the shader failed.
+     */
     public EasyScreen setBackgroundBlur(boolean blur) {
         this.backgroundBlur = blur;
+        return this;
+    }
+
+    /** Blur radius in GUI pixels at full screen-open (default 8). */
+    public EasyScreen setBackgroundBlurRadius(float radius) {
+        this.backgroundBlurRadius = radius;
+        return this;
+    }
+
+    /** Whether to draw the theme's dim over the background (off for see-through editors). */
+    public EasyScreen setBackgroundDim(boolean dim) {
+        this.backgroundDim = dim;
+        return this;
+    }
+
+    /**
+     * Fills the whole background with a custom shader (e.g. {@code Shaders.LIQUID}) instead
+     * of the panorama/blur — an animated backdrop for menu screens. It fades in with the
+     * open transition; the theme dim still draws on top. Pass {@code null} to disable.
+     */
+    public EasyScreen setBackgroundShader(EasyShader shader) {
+        return setBackgroundShader(shader, null);
+    }
+
+    public EasyScreen setBackgroundShader(EasyShader shader, Consumer<ShaderInstance> uniforms) {
+        this.backgroundShader = shader;
+        this.backgroundShaderUniforms = uniforms;
+        return this;
+    }
+
+    /** How the background shader maps onto the screen (default {@link ShaderFit#COVER}). */
+    public EasyScreen setBackgroundShaderFit(ShaderFit fit) {
+        this.backgroundShaderFit = fit;
         return this;
     }
 
@@ -131,11 +177,27 @@ public abstract class EasyScreen extends Screen {
             return;
         }
 
-        if (backgroundBlur && minecraft != null && minecraft.level != null) {
-            renderBlurredBackground(partialTick);
+        boolean shaderBackdrop = backgroundShader != null && backgroundShader.get() != null;
+        if (minecraft != null && minecraft.level == null && !shaderBackdrop) {
+            // Outside a world there is nothing behind the screen; give it the title-screen
+            // panorama so the blur/dim has something premium to work with.
+            renderPanorama(graphics, partialTick);
         }
-        graphics.fill(0, 0, width, height,
-                ColorUtil.multiplyAlpha(theme.screenDim, open));
+        if (shaderBackdrop) {
+            // The shader IS the background; blurring it would be wasted work.
+            Render2D.shadedRect(graphics, backgroundShader, 0, 0, width, height,
+                    ColorUtil.withAlpha(0xFFFFFFFF, open), backgroundShaderUniforms, backgroundShaderFit);
+        } else if (backgroundBlur) {
+            boolean blurred = Render2D.fillRectBlurred(graphics, 0, 0, width, height,
+                    backgroundBlurRadius * open, 0x00000000);
+            if (!blurred && minecraft != null && minecraft.level != null) {
+                renderBlurredBackground(partialTick);
+            }
+        }
+        if (backgroundDim) {
+            graphics.fill(0, 0, width, height,
+                    ColorUtil.multiplyAlpha(theme.screenDim, open));
+        }
 
         // Pop-in: subtle scale from the screen center plus a global alpha fade
         float scale = 0.94f + 0.06f * open;

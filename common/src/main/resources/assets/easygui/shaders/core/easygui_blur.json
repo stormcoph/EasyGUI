@@ -1,0 +1,11 @@
+{
+    "vertex": "easygui_blur",
+    "fragment": "easygui_blur",
+    "samplers": [
+        { "name": "Sampler0" }
+    ],
+    "uniforms": [
+        { "name": "BlurDir", "type": "float", "count": 2, "values": [ 1.0, 0.0 ] },
+        { "name": "SrcSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] }
+    ]
+}

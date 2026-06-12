@@ -5,8 +5,8 @@ import net.fabricmc.api.Environment;
 
 /**
  * Screen-relative anchor points for HUD overlays. Offsets are applied inward from the
- * anchored edge (and ignored on centered axes), so an overlay stays a fixed margin from
- * its corner at any resolution.
+ * anchored edge (on centered axes they shift right/down from the center), so an overlay
+ * stays a fixed margin from its anchor at any resolution.
  */
 @Environment(EnvType.CLIENT)
 public enum Anchor {
@@ -28,17 +28,39 @@ public enum Anchor {
         this.factorY = factorY;
     }
 
+    /** The anchor whose axis factors (0, 0.5, 1) match — e.g. {@code of(1, 0)} = TOP_RIGHT. */
+    public static Anchor of(float factorX, float factorY) {
+        for (Anchor anchor : values()) {
+            if (anchor.factorX == factorX && anchor.factorY == factorY) {
+                return anchor;
+            }
+        }
+        return TOP_LEFT;
+    }
+
     public float resolveX(float screenWidth, float width, float offsetX) {
         float base = (screenWidth - width) * factorX;
-        if (factorX == 0f) return base + offsetX;
         if (factorX == 1f) return base - offsetX;
-        return base;
+        return base + offsetX;
     }
 
     public float resolveY(float screenHeight, float height, float offsetY) {
         float base = (screenHeight - height) * factorY;
-        if (factorY == 0f) return base + offsetY;
         if (factorY == 1f) return base - offsetY;
-        return base;
+        return base + offsetY;
+    }
+
+    /** Inverse of {@link #resolveX}: the offset that puts an overlay's left edge at {@code x}. */
+    public float offsetForX(float screenWidth, float width, float x) {
+        float base = (screenWidth - width) * factorX;
+        if (factorX == 1f) return base - x;
+        return x - base;
+    }
+
+    /** Inverse of {@link #resolveY}: the offset that puts an overlay's top edge at {@code y}. */
+    public float offsetForY(float screenHeight, float height, float y) {
+        float base = (screenHeight - height) * factorY;
+        if (factorY == 1f) return base - y;
+        return y - base;
     }
 }

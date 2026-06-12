@@ -13,8 +13,10 @@ import net.minecraft.util.Mth;
  * A vertically scrolling container with smooth (eased) wheel scrolling and a slim
  * auto-fading scrollbar with a draggable thumb.
  *
- * <p>Lay out children in unscrolled coordinates (as if the panel showed everything from
- * its top edge); the panel translates and clips them while scrolling.</p>
+ * <p>Lay out children as if the panel showed everything from its top edge. While
+ * scrolling, the panel physically shifts the children's positions (rather than just
+ * translating the pose), so hover states, tooltips, and popup layers (e.g. a
+ * {@link Dropdown} inside the list) stay aligned with what's on screen.</p>
  */
 @Environment(EnvType.CLIENT)
 public class ScrollPanel extends Panel {
@@ -25,6 +27,7 @@ public class ScrollPanel extends Panel {
     private final SmoothValue barFade = new SmoothValue(0f, 8f);
     private float scrollStep = 24f;
     private float contentPadding = 6f;
+    private float appliedScroll;
     private boolean draggingThumb;
     private double dragStartY;
     private float dragStartScroll;
@@ -45,7 +48,7 @@ public class ScrollPanel extends Panel {
         for (Widget child : children) {
             maxBottom = Math.max(maxBottom, child.getY() + child.getHeight());
         }
-        return maxBottom - y + contentPadding;
+        return maxBottom + appliedScroll - y + contentPadding;
     }
 
     public float maxScroll() {
@@ -65,29 +68,36 @@ public class ScrollPanel extends Panel {
         drawBackground(graphics);
 
         float scrollAmount = Mth.clamp(scroll.get(), 0, maxScroll());
+        applyScroll(scrollAmount);
         boolean mouseInside = contains(mouseX, mouseY);
         barFade.setTarget(mouseInside || draggingThumb || !scroll.isSettled(0.5f) ? 1f : 0f);
 
         Render2D.pushScissor(graphics, x, y, width, height);
-        var pose = graphics.pose();
-        pose.pushPose();
-        pose.translate(0, -scrollAmount, 0);
-        // Children hit-test in unscrolled space, so shift the mouse into it; suppress
-        // hover entirely while the cursor is outside the clip area.
+        // Suppress hover entirely while the cursor is outside the clip area.
         double childMouseX = mouseInside ? mouseX : -1.0E7;
-        double childMouseY = mouseInside ? mouseY + scrollAmount : -1.0E7;
+        double childMouseY = mouseInside ? mouseY : -1.0E7;
         for (Widget child : children) {
             // Skip children fully outside the visible window
-            if (child.getY() + child.getHeight() < y + scrollAmount - 5
-                    || child.getY() > y + scrollAmount + height + 5) {
+            if (child.getY() + child.getHeight() < y - 5 || child.getY() > y + height + 5) {
                 continue;
             }
             child.render(graphics, childMouseX, childMouseY, delta);
         }
-        pose.popPose();
         Render2D.popScissor(graphics);
 
         drawScrollbar(graphics, scrollAmount);
+    }
+
+    /** Shifts children so their on-screen positions reflect the current scroll amount. */
+    private void applyScroll(float scrollAmount) {
+        float delta = scrollAmount - appliedScroll;
+        if (delta == 0f) {
+            return;
+        }
+        for (Widget child : children) {
+            child.setPosition(child.getX(), child.getY() - delta);
+        }
+        appliedScroll = scrollAmount;
     }
 
     /**
@@ -140,7 +150,7 @@ public class ScrollPanel extends Panel {
     }
 
     // ------------------------------------------------------------------
-    // Input (children receive coordinates shifted into unscrolled space)
+    // Input (children sit at their real on-screen positions; no coordinate shifting)
     // ------------------------------------------------------------------
 
     @Override
@@ -154,7 +164,7 @@ public class ScrollPanel extends Panel {
             dragStartScroll = Mth.clamp(scroll.get(), 0, maxScroll());
             return true;
         }
-        return super.mouseClicked(mouseX, mouseY + scroll.get(), button);
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
@@ -168,7 +178,7 @@ public class ScrollPanel extends Panel {
             }
             return true;
         }
-        return super.mouseDragged(mouseX, mouseY + scroll.get(), button, dragX, dragY);
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
     }
 
     @Override
@@ -177,7 +187,7 @@ public class ScrollPanel extends Panel {
         if (button == 0) {
             draggingThumb = false;
         }
-        return super.mouseReleased(mouseX, mouseY + scroll.get(), button) || wasDragging;
+        return super.mouseReleased(mouseX, mouseY, button) || wasDragging;
     }
 
     @Override
@@ -185,7 +195,7 @@ public class ScrollPanel extends Panel {
         if (!contains(mouseX, mouseY)) {
             return false;
         }
-        if (super.mouseScrolled(mouseX, mouseY + scroll.get(), scrollX, scrollY)) {
+        if (super.mouseScrolled(mouseX, mouseY, scrollX, scrollY)) {
             return true;
         }
         if (maxScroll() <= 0) {
