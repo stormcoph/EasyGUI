@@ -178,6 +178,11 @@ public class NumberStepper extends Widget {
                     Text2D.lineHeight() + 2.5f, theme.text);
         }
         Render2D.popScissor(graphics);
+
+        // While editing the control's own outline is already accent, so no extra ring
+        if (focused && !editing) {
+            drawFocusRing(graphics, x, y, width, height, r);
+        }
     }
 
     private void drawZoneHighlight(GuiGraphics graphics, float zoneX, float zoneW, float strength,
@@ -239,6 +244,11 @@ public class NumberStepper extends Widget {
     // ------------------------------------------------------------------
     // Input
     // ------------------------------------------------------------------
+
+    @Override
+    public boolean isFocusable() {
+        return true;
+    }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -303,7 +313,24 @@ public class NumberStepper extends Widget {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (!focused || !editing) {
+        if (!focused) {
+            return false;
+        }
+        if (!editing) {
+            switch (keyCode) {
+                case GLFW.GLFW_KEY_UP -> {
+                    applyValue(value + step);
+                    return true;
+                }
+                case GLFW.GLFW_KEY_DOWN -> {
+                    applyValue(value - step);
+                    return true;
+                }
+                case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
+                    beginEdit();
+                    return true;
+                }
+            }
             return false;
         }
         switch (keyCode) {

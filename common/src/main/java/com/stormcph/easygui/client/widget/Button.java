@@ -14,6 +14,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.sounds.SoundEvents;
+import org.lwjgl.glfw.GLFW;
 
 /**
  * A clean rounded button with hover color blending, press scale, and a click ripple.
@@ -152,16 +153,16 @@ public class Button extends Widget {
         }
 
         pose.popPose();
+
+        if (focused) {
+            drawFocusRing(graphics, x, y, width, height, r);
+        }
     }
 
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (!enabled || button != 0 || !contains(mouseX, mouseY)) {
-            return false;
-        }
-        pressed = true;
-        rippleX = (float) mouseX;
-        rippleY = (float) mouseY;
+    /** Fires the full click feedback (ripple, sound, callback) from the given ripple origin. */
+    private void click(float originX, float originY) {
+        rippleX = originX;
+        rippleY = originY;
         ripple.start();
         if (playSound) {
             Minecraft.getInstance().getSoundManager()
@@ -170,7 +171,34 @@ public class Button extends Widget {
         if (onClick != null) {
             onClick.run();
         }
+    }
+
+    @Override
+    public boolean isFocusable() {
         return true;
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (!enabled || button != 0 || !contains(mouseX, mouseY)) {
+            return false;
+        }
+        pressed = true;
+        click((float) mouseX, (float) mouseY);
+        return true;
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (!focused || !enabled) {
+            return false;
+        }
+        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER
+                || keyCode == GLFW.GLFW_KEY_SPACE) {
+            click(x + width / 2f, y + height / 2f);
+            return true;
+        }
+        return false;
     }
 
     @Override

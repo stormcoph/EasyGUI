@@ -134,6 +134,11 @@ public class KeybindButton extends Widget {
         Render2D.strokeRoundedRect(graphics, chipX, y, chipW, height, r, 1f + listenT * 0.5f, outline);
         Text2D.draw(graphics, chip, chipX + (chipW - Text2D.width(chip)) / 2f,
                 y + (height - Text2D.lineHeight()) / 2f + 0.5f, textColor);
+
+        // While listening the chip's own outline is already accent, so no extra ring
+        if (focused && !listening) {
+            drawFocusRing(graphics, chipX, y, chipW, height, r);
+        }
     }
 
     private void bind(InputConstants.Key newKey) {
@@ -168,14 +173,27 @@ public class KeybindButton extends Widget {
     }
 
     @Override
+    public boolean isFocusable() {
+        return true;
+    }
+
+    @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (!listening) {
+            // Keyboard activation: Enter on a focused chip starts listening
+            if (focused && enabled
+                    && (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)) {
+                listening = true;
+                return true;
+            }
             return false;
         }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             listening = false;
             return true;
         }
+        // Consumes every other key — including Tab, which therefore BINDS Tab instead of
+        // moving focus, because the screen offers the focused widget the key first.
         bind(InputConstants.getKey(keyCode, scanCode));
         return true;
     }

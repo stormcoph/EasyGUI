@@ -17,6 +17,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.client.gui.screens.Screen;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -269,6 +271,39 @@ public abstract class EasyScreen extends Screen {
         return focusedWidget;
     }
 
+    /**
+     * Moves keyboard focus to the next (or previous) focusable widget in tree order,
+     * wrapping around. Invisible widgets — and everything inside invisible containers —
+     * are skipped, as are disabled widgets.
+     */
+    public void cycleFocus(boolean forward) {
+        List<Widget> order = new ArrayList<>();
+        collectFocusable(root, order);
+        if (order.isEmpty()) {
+            return;
+        }
+        int index = order.indexOf(focusedWidget);
+        int next = index < 0
+                ? (forward ? 0 : order.size() - 1)
+                : Math.floorMod(index + (forward ? 1 : -1), order.size());
+        setFocusedWidget(order.get(next));
+    }
+
+    /** Depth-first walk collecting visible, enabled, focusable widgets in tab order. */
+    private void collectFocusable(Widget widget, List<Widget> out) {
+        if (!widget.isVisible()) {
+            return; // also prunes everything inside a hidden container
+        }
+        if (widget.isFocusable() && widget.isEnabled()) {
+            out.add(widget);
+        }
+        if (widget instanceof Panel panel) {
+            for (Widget child : panel.getChildren()) {
+                collectFocusable(child, out);
+            }
+        }
+    }
+
     /** Gives {@code widget} the popup layer (rendered on top, receives input first). */
     public void openPopup(Widget widget) {
         popupWidget = widget;
@@ -331,6 +366,12 @@ public abstract class EasyScreen extends Screen {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (focusedWidget != null && focusedWidget.keyPressed(keyCode, scanCode, modifiers)) {
+            return true;
+        }
+        // The focused widget got first refusal, so a listening KeybindButton can still
+        // bind Tab and an open Dropdown can hold focus; otherwise Tab walks the tree.
+        if (keyCode == GLFW.GLFW_KEY_TAB) {
+            cycleFocus(!hasShiftDown());
             return true;
         }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {

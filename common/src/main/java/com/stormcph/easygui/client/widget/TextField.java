@@ -233,6 +233,12 @@ public class TextField extends Widget {
     // Input
     // ------------------------------------------------------------------
 
+    /** Focusable for Tab traversal; the animated accent outline doubles as the focus ring. */
+    @Override
+    public boolean isFocusable() {
+        return true;
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!enabled || button != 0 || !contains(mouseX, mouseY)) {

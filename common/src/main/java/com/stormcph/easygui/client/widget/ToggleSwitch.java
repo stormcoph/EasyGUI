@@ -8,6 +8,7 @@ import com.stormcph.easygui.client.theme.Theme;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.gui.GuiGraphics;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.function.Consumer;
 
@@ -70,6 +71,23 @@ public class ToggleSwitch extends Widget {
             int color = enabled ? theme.text : theme.textMuted;
             Text2D.drawVerticallyCentered(graphics, label, x + TRACK_WIDTH + 8, y, height, color);
         }
+
+        if (focused) {
+            drawFocusRing(graphics, x, trackY, TRACK_WIDTH, TRACK_HEIGHT, TRACK_HEIGHT / 2f);
+        }
+    }
+
+    private void toggle() {
+        value = !value;
+        knobAnim.setTarget(value ? 1f : 0f);
+        if (onChange != null) {
+            onChange.accept(value);
+        }
+    }
+
+    @Override
+    public boolean isFocusable() {
+        return true;
     }
 
     @Override
@@ -77,11 +95,20 @@ public class ToggleSwitch extends Widget {
         if (!enabled || button != 0 || !contains(mouseX, mouseY)) {
             return false;
         }
-        value = !value;
-        knobAnim.setTarget(value ? 1f : 0f);
-        if (onChange != null) {
-            onChange.accept(value);
-        }
+        toggle();
         return true;
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (!focused || !enabled) {
+            return false;
+        }
+        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER
+                || keyCode == GLFW.GLFW_KEY_SPACE) {
+            toggle();
+            return true;
+        }
+        return false;
     }
 }

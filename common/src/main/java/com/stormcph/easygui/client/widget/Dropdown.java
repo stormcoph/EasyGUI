@@ -10,6 +10,7 @@ import com.stormcph.easygui.client.theme.Theme;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.gui.GuiGraphics;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 import java.util.function.IntConsumer;
@@ -27,6 +28,8 @@ public class Dropdown extends Widget {
     private int selected;
     private IntConsumer onSelect;
     private boolean open;
+    /** Keyboard-highlighted row while the popup is open (-1 = none). */
+    private int highlight = -1;
 
     private final SmoothValue openAnim = new SmoothValue(0f, 18f);
 
@@ -77,6 +80,11 @@ public class Dropdown extends Widget {
         pose.translate(-(cx + iconSize / 2f), -(cy + iconSize / 2f), 0);
         Icons.CHEVRON_DOWN.render(graphics, cx, cy, iconSize, theme.textMuted);
         pose.popPose();
+
+        // While open the control's own outline is already accent, so no extra ring
+        if (focused && !open) {
+            drawFocusRing(graphics, x, y, width, height, r);
+        }
     }
 
     private float popupHeight() {
@@ -119,7 +127,8 @@ public class Dropdown extends Widget {
             float oy = py + 4 + i * OPTION_HEIGHT;
             boolean hoveredOption = open && mouseX >= px && mouseX < px + pw
                     && mouseY >= oy && mouseY < oy + OPTION_HEIGHT;
-            if (hoveredOption) {
+            // The keyboard-highlighted row reads exactly like a hovered one
+            if (hoveredOption || (open && i == highlight)) {
                 Render2D.fillRoundedRect(graphics, px + 3, oy, pw - 6, OPTION_HEIGHT, 4f, theme.surfaceHover);
             }
             int color = i == selected ? theme.accent : theme.text;
@@ -135,16 +144,26 @@ public class Dropdown extends Widget {
     }
 
     @Override
+    public boolean isFocusable() {
+        return true;
+    }
+
+    @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!enabled || button != 0 || !contains(mouseX, mouseY)) {
             return false;
         }
         setOpen(!open);
+        if (open) {
+            // Take focus so the arrow keys steer the popup even after a mouse open
+            requestFocus();
+        }
         return true;
     }
 
     private void setOpen(boolean newOpen) {
         open = newOpen;
+        highlight = open ? selected : -1;
         EasyScreen screen = getScreen();
         if (screen != null) {
             if (open) {
@@ -153,6 +172,54 @@ public class Dropdown extends Widget {
                 screen.closePopup(this);
             }
         }
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (!focused || !enabled) {
+            return false;
+        }
+        if (!open) {
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER
+                    || keyCode == GLFW.GLFW_KEY_SPACE) {
+                setOpen(true);
+                return true;
+            }
+            return false;
+        }
+        switch (keyCode) {
+            case GLFW.GLFW_KEY_UP -> {
+                if (!options.isEmpty()) {
+                    highlight = Math.floorMod((highlight < 0 ? selected : highlight) - 1, options.size());
+                }
+                return true;
+            }
+            case GLFW.GLFW_KEY_DOWN -> {
+                if (!options.isEmpty()) {
+                    highlight = Math.floorMod((highlight < 0 ? selected : highlight) + 1, options.size());
+                }
+                return true;
+            }
+            case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER, GLFW.GLFW_KEY_SPACE -> {
+                if (highlight >= 0 && highlight < options.size()) {
+                    selected = highlight;
+                    if (onSelect != null) {
+                        onSelect.accept(selected);
+                    }
+                }
+                setOpen(false);
+                return true;
+            }
+            case GLFW.GLFW_KEY_ESCAPE -> {
+                setOpen(false);
+                return true;
+            }
+            case GLFW.GLFW_KEY_TAB -> {
+                // Swallow Tab so focus can't wander away underneath the open popup
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -183,5 +250,6 @@ public class Dropdown extends Widget {
     @Override
     public void dismissPopup() {
         open = false;
+        highlight = -1;
     }
 }

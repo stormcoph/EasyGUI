@@ -1,6 +1,8 @@
 package com.stormcph.easygui.client.widget;
 
 import com.stormcph.easygui.client.animation.SmoothValue;
+import com.stormcph.easygui.client.render.ColorUtil;
+import com.stormcph.easygui.client.render.Render2D;
 import com.stormcph.easygui.client.screen.EasyScreen;
 import com.stormcph.easygui.client.theme.Theme;
 import net.fabricmc.api.EnvType;
@@ -117,6 +119,14 @@ public abstract class Widget {
         return focused;
     }
 
+    /**
+     * Whether Tab traversal can land on this widget. Defaults to {@code false};
+     * interactive widgets opt in so keyboard users can reach and activate them.
+     */
+    public boolean isFocusable() {
+        return false;
+    }
+
     public void requestFocus() {
         EasyScreen s = getScreen();
         if (s != null) {
@@ -172,6 +182,17 @@ public abstract class Widget {
     }
 
     protected abstract void renderWidget(GuiGraphics graphics, double mouseX, double mouseY, float delta);
+
+    /**
+     * Strokes the shared keyboard-focus indicator: a subtle accent outline 2px outside the
+     * given rect. Focusable widgets call this from their render pass while focused. Inputs
+     * whose own outline already turns accent on focus (e.g. {@link TextField}) skip it so
+     * they don't show a double ring.
+     */
+    protected void drawFocusRing(GuiGraphics graphics, float x, float y, float w, float h, float radius) {
+        Render2D.strokeRoundedRect(graphics, x - 2f, y - 2f, w + 4f, h + 4f, radius + 2f, 1.5f,
+                ColorUtil.multiplyAlpha(theme().accent, 0.8f));
+    }
 
     /**
      * Second render pass, drawn after the whole main tree (for popups, dropdown lists, etc.).

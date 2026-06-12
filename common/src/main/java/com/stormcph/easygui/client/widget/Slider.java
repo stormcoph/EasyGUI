@@ -9,6 +9,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.Mth;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.function.Consumer;
 import java.util.function.DoubleFunction;
@@ -104,12 +105,19 @@ public class Slider extends Widget {
                     y + (height - Text2D.lineHeight()) / 2f + 0.5f,
                     enabled ? theme.textMuted : ColorUtil.multiplyAlpha(theme.textMuted, 0.45f));
         }
+
+        if (focused) {
+            drawFocusRing(graphics, x, y, width, height, height / 2f);
+        }
     }
 
     private void updateFromMouse(double mouseX) {
         float tw = trackWidth();
         double t = Mth.clamp((mouseX - x) / tw, 0.0, 1.0);
-        double newValue = snap(min + (max - min) * t);
+        applyValue(snap(min + (max - min) * t));
+    }
+
+    private void applyValue(double newValue) {
         if (newValue != value) {
             value = newValue;
             if (onChange != null) {
@@ -141,6 +149,29 @@ public class Slider extends Widget {
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (dragging && button == 0) {
             dragging = false;
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean isFocusable() {
+        return true;
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (!focused || !enabled) {
+            return false;
+        }
+        // One step per press; continuous sliders move 1% of the range
+        double amount = step > 0 ? step : (max - min) * 0.01;
+        if (keyCode == GLFW.GLFW_KEY_LEFT) {
+            applyValue(snap(Mth.clamp(value - amount, min, max)));
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_RIGHT) {
+            applyValue(snap(Mth.clamp(value + amount, min, max)));
             return true;
         }
         return false;
