@@ -225,7 +225,7 @@ public class TextElement extends HudOverlay {
                     }
                     Text2D.draw(graphics, part, x + cursor, y,
                             segments.get(i).key() == null ? theme.textMuted : bright, shadow);
-                    cursor += Text2D.width(part);
+                    cursor += Text2D.exactWidth(part);
                 }
             }
             case GRADIENT -> {
@@ -252,7 +252,9 @@ public class TextElement extends HudOverlay {
         while (i < n) {
             int codePoint = rendered.codePointAt(i);
             String ch = new String(Character.toChars(codePoint));
-            float charWidth = Text2D.width(ch);
+            // Sub-pixel advance: the int width() ceils per glyph, which would accumulate
+            // into visible letter-spacing with a TTF UI font.
+            float charWidth = Text2D.exactWidth(ch);
             Text2D.draw(graphics, ch, x + cursor, y, colorAt.color(index, cursor, charWidth), shadow);
             cursor += charWidth;
             index++;

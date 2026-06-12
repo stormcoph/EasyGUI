@@ -295,6 +295,14 @@ public class ModalDialog extends Panel {
         visible = false;
         EasyScreen screen = getScreen();
         if (screen != null) {
+            // Drop focus held by anything inside the dialog (e.g. a clicked text field),
+            // so a dangling focused widget can't keep eating keys after removal.
+            for (Widget w = screen.getFocusedWidget(); w != null; w = w.getParent()) {
+                if (w == this) {
+                    screen.setFocusedWidget(null);
+                    break;
+                }
+            }
             screen.closePopup(this);
         }
         // We are inside the parent's render iteration right now, so the actual

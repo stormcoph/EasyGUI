@@ -753,11 +753,21 @@ public final class Render2D {
 
     /**
      * Pushes a scissor region in absolute GUI coordinates. Regions nest (they intersect with
-     * any active region). Note that vanilla scissoring ignores pose transformations.
+     * any active region). Vanilla scissoring ignores pose transformations, so the current
+     * pose's translation and axis-aligned scale are applied here — clipped content stays
+     * correct inside translated containers (HUD widget hosts, the screen pop-in scale).
+     * Rotated poses are not supported.
      */
     public static void pushScissor(GuiGraphics graphics, float x, float y, float width, float height) {
-        graphics.enableScissor((int) Math.floor(x), (int) Math.floor(y),
-                (int) Math.ceil(x + width), (int) Math.ceil(y + height));
+        var m = graphics.pose().last().pose();
+        float sx = m.m00();
+        float sy = m.m11();
+        float x1 = x * sx + m.m30();
+        float y1 = y * sy + m.m31();
+        float x2 = (x + width) * sx + m.m30();
+        float y2 = (y + height) * sy + m.m31();
+        graphics.enableScissor((int) Math.floor(Math.min(x1, x2)), (int) Math.floor(Math.min(y1, y2)),
+                (int) Math.ceil(Math.max(x1, x2)), (int) Math.ceil(Math.max(y1, y2)));
     }
 
     public static void popScissor(GuiGraphics graphics) {

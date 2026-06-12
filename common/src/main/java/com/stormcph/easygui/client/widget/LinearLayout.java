@@ -123,6 +123,11 @@ public class LinearLayout extends Panel {
         return this;
     }
 
+    @Override
+    public boolean movesChildrenWithSelf() {
+        return true; // setPosition/setBounds relayout, repositioning the whole subtree
+    }
+
     // ------------------------------------------------------------------
     // Geometry — the layout re-resolves immediately so nested layouts settle in one pass
     // ------------------------------------------------------------------
@@ -277,9 +282,11 @@ public class LinearLayout extends Panel {
     }
 
     /**
-     * Moves a child to its resolved position. Nested {@link LinearLayout}s reposition
-     * their own subtree when their position is set; plain containers get their whole
-     * subtree translated by the same delta so absolute child coordinates stay aligned.
+     * Moves a child to its resolved position. Containers that
+     * {@link Panel#movesChildrenWithSelf move their own subtree} (layouts, collapsible
+     * sections, tab hosts…) are repositioned with a single {@code setPosition}; plain
+     * containers get their whole subtree translated by the same delta so absolute child
+     * coordinates stay aligned.
      */
     private void placeChild(Widget child, float newX, float newY) {
         float dx = newX - child.getX();
@@ -288,17 +295,8 @@ public class LinearLayout extends Panel {
             return;
         }
         child.setPosition(newX, newY);
-        if (child instanceof Panel panel && !(child instanceof LinearLayout)) {
-            offsetDescendants(panel, dx, dy);
-        }
-    }
-
-    private static void offsetDescendants(Panel panel, float dx, float dy) {
-        for (Widget child : panel.getChildren()) {
-            child.setPosition(child.getX() + dx, child.getY() + dy);
-            if (child instanceof Panel nested && !(child instanceof LinearLayout)) {
-                offsetDescendants(nested, dx, dy);
-            }
+        if (child instanceof Panel panel && !panel.movesChildrenWithSelf()) {
+            shiftDescendants(panel, dx, dy);
         }
     }
 

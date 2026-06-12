@@ -67,6 +67,18 @@ public final class Text2D {
         return font().width(text);
     }
 
+    /**
+     * Sub-pixel text width. {@link #width} ceils per call, which accumulates visible
+     * letter-spacing when stepping through a string character by character (gradient or
+     * rainbow text with a TTF font) — use this for cursor stepping instead.
+     */
+    public static float exactWidth(String text) {
+        if (uiFont != null) {
+            return uiFont.width(text, uiFontSize);
+        }
+        return font().width(text);
+    }
+
     public static int lineHeight() {
         if (uiFont != null) {
             return Math.round(uiFontSize);

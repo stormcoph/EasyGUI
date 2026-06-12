@@ -149,6 +149,11 @@ public class ReorderableList extends ScrollPanel {
         return dragging;
     }
 
+    @Override
+    public boolean movesChildrenWithSelf() {
+        return true; // layoutRows re-resolves every row subtree from the list's own bounds
+    }
+
     // ------------------------------------------------------------------
     // Layout
     // ------------------------------------------------------------------
@@ -223,28 +228,22 @@ public class ReorderableList extends ScrollPanel {
             float renderY = dragging && row == pressedRow
                     ? dragRenderY(row)
                     : y + state.anim.get() - scrollAmount;
-            float dx = innerX - state.anchorX;
-            float dy = renderY - state.anchorY;
-            if (dx != 0f || dy != 0f) {
-                if (row instanceof Panel panel) {
-                    for (Widget child : panel.getChildren()) {
-                        shift(child, dx, dy);
-                    }
+            boolean selfMoving = row instanceof Panel p && p.movesChildrenWithSelf();
+            if (!selfMoving) {
+                // Plain rows: the row frame moves via setBounds but its descendants do
+                // not, so shift them to the render position ourselves (anchor-tracked).
+                float dx = innerX - state.anchorX;
+                float dy = renderY - state.anchorY;
+                if ((dx != 0f || dy != 0f) && row instanceof Panel panel) {
+                    shiftDescendants(panel, dx, dy);
                 }
                 state.anchorX = innerX;
                 state.anchorY = renderY;
             }
+            // Self-moving rows carry their subtree through setBounds (and through the
+            // parent ScrollPanel's scroll shift), so they need no anchor compensation.
             row.setBounds(innerX, renderY + preShift, innerW, row.getHeight());
             off += row.getHeight() + rowGap;
-        }
-    }
-
-    private static void shift(Widget widget, float dx, float dy) {
-        widget.setPosition(widget.getX() + dx, widget.getY() + dy);
-        if (widget instanceof Panel panel) {
-            for (Widget child : panel.getChildren()) {
-                shift(child, dx, dy);
-            }
         }
     }
 

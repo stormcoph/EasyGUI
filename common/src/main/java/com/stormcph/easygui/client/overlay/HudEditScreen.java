@@ -126,8 +126,10 @@ public class HudEditScreen extends EasyScreen {
         if (super.mouseClicked(mouseX, mouseY, button)) {
             return true;
         }
-        if (insideToolbar(mouseX, mouseY)) {
-            return true; // keep the toolbar clear of canvas dragging
+        if (insideToolbar(mouseX, mouseY) && OverlayEditor.pickOverlay(mouseX, mouseY, true) == null) {
+            // Empty toolbar area stays inert — but an overlay parked underneath the bar
+            // must remain pickable, or it could never be dragged back out.
+            return true;
         }
         if (button == 1) {
             HudOverlay hit = OverlayEditor.pickOverlay(mouseX, mouseY, true);

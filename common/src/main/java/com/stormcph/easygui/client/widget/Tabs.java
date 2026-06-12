@@ -215,23 +215,32 @@ public class Tabs extends Panel {
 
     @Override
     public Tabs setBounds(float x, float y, float width, float height) {
+        float dx = x - this.x;
+        float dy = y - this.y;
         super.setBounds(x, y, width, height);
-        layoutPages();
+        layoutPages(dx, dy);
         return this;
     }
 
     @Override
     public Tabs setPosition(float x, float y) {
+        float dx = x - this.x;
+        float dy = y - this.y;
         super.setPosition(x, y);
-        layoutPages();
+        layoutPages(dx, dy);
         return this;
     }
 
     @Override
     public Tabs setSize(float width, float height) {
         super.setSize(width, height);
-        layoutPages();
+        layoutPages(0f, 0f);
         return this;
+    }
+
+    @Override
+    public boolean movesChildrenWithSelf() {
+        return true; // moving the host shifts every page's content subtree along
     }
 
     /** Top edge of the content area (just below the tab bar). */
@@ -244,9 +253,11 @@ public class Tabs extends Panel {
         return Math.max(0f, height - BAR_HEIGHT);
     }
 
-    private void layoutPages() {
+    /** Re-bounds every page to the content area; a position delta also moves page contents. */
+    private void layoutPages(float dx, float dy) {
         for (Panel page : pages) {
             page.setBounds(x, contentY(), width, contentHeight());
+            shiftDescendants(page, dx, dy);
         }
     }
 

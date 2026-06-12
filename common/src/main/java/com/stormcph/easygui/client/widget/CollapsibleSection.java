@@ -180,12 +180,17 @@ public class CollapsibleSection extends Panel {
 
     /** Keeps the absolutely-positioned content attached to the header when the section moves. */
     private void moveChildren(float dx, float dy) {
-        if (dx == 0f && dy == 0f) {
-            return;
-        }
-        for (Widget child : children) {
-            child.setPosition(child.getX() + dx, child.getY() + dy);
-        }
+        shiftDescendants(this, dx, dy);
+    }
+
+    @Override
+    public boolean movesChildrenWithSelf() {
+        return true; // setPosition/setBounds shift the content subtree along
+    }
+
+    @Override
+    public boolean childrenFocusTraversable() {
+        return expanded; // collapsed content stays visible=true but must not take focus
     }
 
     // ------------------------------------------------------------------

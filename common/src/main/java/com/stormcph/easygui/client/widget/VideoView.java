@@ -741,10 +741,16 @@ public class VideoView extends Widget {
             int sourceNext = 0; // index of the frame the source will deliver next
 
             while (!disposed) {
+                // Capture the seek generation BEFORE positioning/decoding: a seek that
+                // lands mid-decode must leave this frame stamped stale (the render side
+                // discards it), or a pre-seek frame with a far-future presentation time
+                // could wedge the ring after a backward seek.
+                int gen = generation;
                 double seekSeconds = pendingSeekSeconds;
                 if (seekSeconds >= 0) {
                     pendingSeekSeconds = -1;
                     nextAbs = (long) (seekSeconds * 1_000_000) / fm;
+                    gen = generation; // bumped before the pending write, so this is current
                 }
                 if (ring.remainingCapacity() == 0) {
                     LockSupport.parkNanos(playing ? 4_000_000L : 25_000_000L);
@@ -795,7 +801,7 @@ public class VideoView extends Widget {
                     nextAbs++;
                     continue;
                 }
-                DecodedFrame frame = new DecodedFrame(generation, nextAbs * fm, image);
+                DecodedFrame frame = new DecodedFrame(gen, nextAbs * fm, image);
                 if (!ring.offer(frame)) {
                     image.close(); // raced with a refill; drop rather than ever block
                 }

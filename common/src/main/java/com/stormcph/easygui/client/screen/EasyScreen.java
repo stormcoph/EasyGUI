@@ -297,7 +297,7 @@ public abstract class EasyScreen extends Screen {
         if (widget.isFocusable() && widget.isEnabled()) {
             out.add(widget);
         }
-        if (widget instanceof Panel panel) {
+        if (widget instanceof Panel panel && panel.childrenFocusTraversable()) {
             for (Widget child : panel.getChildren()) {
                 collectFocusable(child, out);
             }
@@ -306,7 +306,26 @@ public abstract class EasyScreen extends Screen {
 
     /** Gives {@code widget} the popup layer (rendered on top, receives input first). */
     public void openPopup(Widget widget) {
+        if (popupWidget != null && popupWidget != widget) {
+            popupWidget.dismissPopup(); // the layer has one slot; never leave a zombie owner
+        }
         popupWidget = widget;
+        // Focus acquired before the popup opened belongs to the UI underneath; drop it so
+        // keys cannot reach widgets behind the layer. Popup widgets that want keyboard
+        // input (dropdowns, context menus) call requestFocus right after opening.
+        if (widget != null && focusedWidget != null && focusedWidget != widget
+                && !isDescendantOf(focusedWidget, widget)) {
+            setFocusedWidget(null);
+        }
+    }
+
+    private static boolean isDescendantOf(Widget widget, Widget ancestor) {
+        for (Widget w = widget; w != null; w = w.getParent()) {
+            if (w == ancestor) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public void closePopup(Widget widget) {
@@ -369,9 +388,12 @@ public abstract class EasyScreen extends Screen {
             return true;
         }
         // The focused widget got first refusal, so a listening KeybindButton can still
-        // bind Tab and an open Dropdown can hold focus; otherwise Tab walks the tree.
+        // bind Tab and an open Dropdown can hold focus; otherwise Tab walks the tree —
+        // but never beneath an open popup layer (focus must not wander under a modal).
         if (keyCode == GLFW.GLFW_KEY_TAB) {
-            cycleFocus(!hasShiftDown());
+            if (popupWidget == null) {
+                cycleFocus(!hasShiftDown());
+            }
             return true;
         }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
@@ -387,6 +409,9 @@ public abstract class EasyScreen extends Screen {
             closeWithAnimation();
             return true;
         }
+        if (popupWidget != null) {
+            return true; // modal semantics: unhandled keys never reach the UI underneath
+        }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
@@ -394,6 +419,9 @@ public abstract class EasyScreen extends Screen {
     public boolean charTyped(char chr, int modifiers) {
         if (focusedWidget != null && focusedWidget.charTyped(chr, modifiers)) {
             return true;
+        }
+        if (popupWidget != null) {
+            return true; // swallow typing while a popup owns the layer
         }
         return super.charTyped(chr, modifiers);
     }

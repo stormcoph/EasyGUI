@@ -272,16 +272,18 @@ public class GifView extends Widget {
     public void dispose() {
         disposed = true;
         state = State.DISPOSED;
-        ResourceLocation[] textures = frameTextures;
-        frameTextures = null;
-        if (textures != null) {
-            Minecraft.getInstance().execute(() -> {
+        // The texture array is only ever touched on the render thread; nulling it here
+        // from another thread could NPE a frame that is mid-render.
+        Minecraft.getInstance().execute(() -> {
+            ResourceLocation[] textures = frameTextures;
+            frameTextures = null;
+            if (textures != null) {
                 TextureManager manager = Minecraft.getInstance().getTextureManager();
                 for (ResourceLocation texture : textures) {
                     manager.release(texture);
                 }
-            });
-        }
+            }
+        });
     }
 
     // ------------------------------------------------------------------

@@ -74,7 +74,15 @@ public final class Toasts {
     /** Text column width: card minus strip, horizontal padding, icon, and icon gap. */
     private static final float TEXT_WIDTH = CARD_WIDTH - STRIP_WIDTH - PAD_X * 2f - ICON_SIZE - ICON_GAP;
 
-    private static final Queue<Toast> PENDING = new ConcurrentLinkedQueue<>();
+    /** Queued toasts beyond this are dropped oldest-first (e.g. while the overlay is hidden). */
+    private static final int MAX_PENDING = 32;
+    /** Queued toasts older than this are silently dropped at activation — no stale floods. */
+    private static final long PENDING_MAX_AGE_MS = 30_000L;
+
+    private record Queued(Toast toast, long queuedAtMillis) {
+    }
+
+    private static final Queue<Queued> PENDING = new ConcurrentLinkedQueue<>();
     private static volatile boolean clearRequested;
     private static ToastOverlay overlay;
 
@@ -94,8 +102,18 @@ public final class Toasts {
         if (toast == null) {
             return;
         }
-        overlay();
-        PENDING.add(toast);
+        PENDING.add(new Queued(toast, Util.getMillis()));
+        while (PENDING.size() > MAX_PENDING) {
+            PENDING.poll(); // bounded even while the overlay is hidden
+        }
+        // First-use registration touches the overlay/config registries, which are
+        // client-thread only; the queue itself is safe from any thread.
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.isSameThread()) {
+            overlay();
+        } else {
+            minecraft.execute(Toasts::overlay);
+        }
     }
 
     /** Dismisses every visible toast (exit slide + fade) and drops the queued ones. */
@@ -243,13 +261,17 @@ public final class Toasts {
                 live++;
             }
 
-            // Activate queued toasts into free slots; the countdown starts now, not at show().
+            // Activate queued toasts into free slots; the countdown starts now, not at
+            // show(). Entries that sat queued too long (hidden overlay) are dropped.
             while (live < MAX_VISIBLE) {
-                Toast next = PENDING.poll();
+                Queued next = PENDING.poll();
                 if (next == null) {
                     break;
                 }
-                cards.add(0, new Card(next, now)); // index 0 = newest, nearest the anchored edge
+                if (now - next.queuedAtMillis() > PENDING_MAX_AGE_MS) {
+                    continue;
+                }
+                cards.add(0, new Card(next.toast(), now)); // index 0 = newest, nearest the anchored edge
                 live++;
             }
 

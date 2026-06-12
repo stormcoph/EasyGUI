@@ -157,6 +157,46 @@ public class Panel extends Widget {
         return children;
     }
 
+    /**
+     * Whether Tab-key focus traversal may descend into this container's children right
+     * now. Containers that hide their content without flipping the children's visible
+     * flag (e.g. a collapsed {@link CollapsibleSection}) return {@code false} so hidden
+     * widgets cannot be keyboard-focused invisibly.
+     */
+    public boolean childrenFocusTraversable() {
+        return true;
+    }
+
+    /**
+     * Whether this container repositions its own subtree when {@link #setPosition}/
+     * {@link #setBounds} changes its position. Containers that return {@code true}
+     * (layouts, collapsible sections, tab hosts, reorderable lists) are moved with a plain
+     * {@code setPosition} call by outer movers; for plain panels the mover must shift the
+     * descendants itself via {@link #shiftDescendants}.
+     */
+    public boolean movesChildrenWithSelf() {
+        return false;
+    }
+
+    /**
+     * Shifts {@code panel}'s subtree by the given delta. Children that
+     * {@link #movesChildrenWithSelf move their own subtree} are moved with a single
+     * {@code setPosition} call (their override cascades); plain panels are recursed into,
+     * so absolute child coordinates stay aligned at every depth without double-moves.
+     */
+    public static void shiftDescendants(Panel panel, float dx, float dy) {
+        if (dx == 0f && dy == 0f) {
+            return;
+        }
+        for (Widget child : panel.getChildren()) {
+            boolean selfMoving = child instanceof Panel p && p.movesChildrenWithSelf();
+            child.setPosition(child.getX() + dx, child.getY() + dy);
+            if (!selfMoving && child instanceof Panel nested) {
+                shiftDescendants(nested, dx, dy);
+            }
+        }
+    }
+
     // ------------------------------------------------------------------
     // Rendering
     // ------------------------------------------------------------------

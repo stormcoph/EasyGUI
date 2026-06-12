@@ -43,17 +43,17 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       timeout and a {@value #MAX_DOWNLOAD_MB}&nbsp;MB size cap.</li>
  * </ul>
  *
- * <p><b>Ownership and caching.</b> Resource and file handles are owned by the caller:
- * call {@link Handle#close()} when the image is permanently no longer needed. URL handles
- * are different — screens rebuild constantly, and re-downloading (or even re-decoding) an
- * avatar on every rebuild would be wasteful, so URL results are cached in a static map:
- * the same URL always returns the <em>same shared handle</em>, with no refcounting —
- * a cached texture simply stays resident until {@link #release(String)} or
- * {@link #releaseAll()} is called explicitly. Consequently {@link Handle#close()} is a
- * deliberate no-op on shared handles, so a widget being thrown away on a screen rebuild
- * can never pull a cached texture out from under other users. Failed URL loads are cached
- * too (so a dead server isn't hammered once per rebuild); {@code release(url)} clears the
- * entry, allowing a retry.</p>
+ * <p><b>Ownership and caching.</b> Screens rebuild constantly (every resize re-runs
+ * {@code build()}), so re-decoding — or re-downloading — an image on every rebuild would
+ * leak textures and waste work. All three sources are therefore cached in a static map
+ * keyed by source: the same resource location, file path, or URL always returns the
+ * <em>same shared handle</em>, with no refcounting — a cached texture simply stays
+ * resident until {@link #release(String)} / {@link #release(ResourceLocation)} /
+ * {@link #release(Path)} or {@link #releaseAll()} is called explicitly. Consequently
+ * {@link Handle#close()} is a deliberate no-op on shared handles, so a widget thrown away
+ * on a screen rebuild can never pull a cached texture out from under other users. Failed
+ * loads are cached too (so a dead server or missing file isn't retried once per rebuild);
+ * releasing the entry allows a retry.</p>
  *
  * <p>The decode-off-thread / upload-on-render-thread pattern here is intentionally
  * reusable: a video widget can follow the same shape, swapping the one-shot decode for a
@@ -69,7 +69,7 @@ public final class ImageLoader {
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(10);
 
     private static final AtomicInteger NEXT_ID = new AtomicInteger();
-    private static final Map<String, Handle> URL_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, Handle> CACHE = new ConcurrentHashMap<>();
     private static volatile HttpClient httpClient;
 
     private ImageLoader() {
@@ -83,26 +83,28 @@ public final class ImageLoader {
      * Loads an image from mod assets (e.g. {@code mymod:textures/gui/banner.png}).
      * Unlike binding the resource directly, this decodes the file once to learn its
      * pixel dimensions, which fit modes like CONTAIN/COVER need for exact aspect math.
-     * The caller owns the returned handle and should {@link Handle#close()} it when done.
+     * Cached: the same location returns the same shared handle across screen rebuilds;
+     * free explicitly with {@link #release(ResourceLocation)} if ever needed.
      */
     public static Handle fromResource(ResourceLocation location) {
-        return load(location.toString(), false, () -> {
+        return CACHE.computeIfAbsent("res:" + location, k -> load(location.toString(), true, () -> {
             try (InputStream stream = Minecraft.getInstance().getResourceManager().open(location)) {
                 return NativeImage.read(stream);
             }
-        });
+        }));
     }
 
     /**
-     * Loads an image file from disk. The caller owns the returned handle and should
-     * {@link Handle#close()} it when done.
+     * Loads an image file from disk. Cached: the same path returns the same shared handle
+     * across screen rebuilds; free explicitly with {@link #release(Path)} — also the way
+     * to pick up a changed file.
      */
     public static Handle fromFile(Path path) {
-        return load(path.toString(), false, () -> {
+        return CACHE.computeIfAbsent("file:" + path, k -> load(path.toString(), true, () -> {
             try (InputStream stream = Files.newInputStream(path)) {
                 return NativeImage.read(stream);
             }
-        });
+        }));
     }
 
     /**
@@ -112,7 +114,7 @@ public final class ImageLoader {
      * {@link #release(String)} if ever needed.
      */
     public static Handle fromUrl(String url) {
-        return URL_CACHE.computeIfAbsent(url, u -> load(u, true, () -> NativeImage.read(download(u))));
+        return CACHE.computeIfAbsent(url, u -> load(u, true, () -> NativeImage.read(download(u))));
     }
 
     /**
@@ -121,16 +123,26 @@ public final class ImageLoader {
      * Handles still held by widgets flip to {@link State#CLOSED} and draw as placeholders.
      */
     public static void release(String url) {
-        Handle handle = URL_CACHE.remove(url);
+        Handle handle = CACHE.remove(url);
         if (handle != null) {
             handle.forceClose();
         }
     }
 
-    /** Releases every cached URL image (e.g. when tearing the whole UI down). */
+    /** Evicts a cached resource image and releases its texture. */
+    public static void release(ResourceLocation location) {
+        release("res:" + location);
+    }
+
+    /** Evicts a cached file image and releases its texture (the next load re-reads the file). */
+    public static void release(Path path) {
+        release("file:" + path);
+    }
+
+    /** Releases every cached image (e.g. when tearing the whole UI down). */
     public static void releaseAll() {
-        for (String url : URL_CACHE.keySet()) {
-            release(url);
+        for (String key : CACHE.keySet()) {
+            release(key);
         }
     }
 
