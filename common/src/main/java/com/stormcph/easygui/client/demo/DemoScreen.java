@@ -11,24 +11,29 @@ import com.stormcph.easygui.client.screen.EasyScreen;
 import com.stormcph.easygui.client.theme.Theme;
 import com.stormcph.easygui.client.widget.Button;
 import com.stormcph.easygui.client.widget.Checkbox;
+import com.stormcph.easygui.client.widget.ColorPickerButton;
 import com.stormcph.easygui.client.widget.CycleButton;
 import com.stormcph.easygui.client.widget.Divider;
 import com.stormcph.easygui.client.widget.Dropdown;
+import com.stormcph.easygui.client.widget.KeybindButton;
 import com.stormcph.easygui.client.widget.Label;
 import com.stormcph.easygui.client.widget.NumberStepper;
 import com.stormcph.easygui.client.widget.Panel;
 import com.stormcph.easygui.client.widget.ProgressBar;
 import com.stormcph.easygui.client.widget.RangeSlider;
 import com.stormcph.easygui.client.widget.ScrollPanel;
+import com.stormcph.easygui.client.widget.SearchableDropdown;
 import com.stormcph.easygui.client.widget.SegmentedControl;
 import com.stormcph.easygui.client.widget.ShaderView;
 import com.stormcph.easygui.client.widget.Slider;
 import com.stormcph.easygui.client.widget.Spinner;
+import com.stormcph.easygui.client.widget.TextArea;
 import com.stormcph.easygui.client.widget.TextField;
 import com.stormcph.easygui.client.widget.ToggleSwitch;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 
@@ -194,6 +199,7 @@ public class DemoScreen extends EasyScreen {
                     DemoConfig.THEME.set(index == 1
                             ? DemoConfig.ThemeChoice.LIGHT : DemoConfig.ThemeChoice.DARK);
                     Theme picked = index == 1 ? Theme.light() : Theme.dark();
+                    DemoConfig.applyAccent(picked);
                     Theme.setDefault(picked);
                     setTheme(picked);
                 }))
@@ -257,6 +263,35 @@ public class DemoScreen extends EasyScreen {
                 .setTooltip("Right-click cycles backwards")
                 .setBounds(x + 76, rowY, w - 76, 18);
         rowY += 24;
+
+        // Keybind rows — bind both to the same key to see conflict highlighting
+        parent.add(new KeybindButton("Bind A", GLFW.GLFW_KEY_G, k -> {}))
+                .setTooltip("Click, press a key or mouse button — right-click clears")
+                .setBounds(x, rowY, w / 2f - 4, 20);
+        parent.add(new KeybindButton("Bind B", GLFW.GLFW_KEY_H, k -> {}))
+                .setTooltip("Bind both to the same key to see the conflict highlight")
+                .setBounds(x + w / 2f + 4, rowY, w / 2f - 4, 20);
+        rowY += 26;
+
+        // Combo box with type-to-filter
+        parent.add(new SearchableDropdown(List.of("Andesite", "Basalt", "Calcite", "Deepslate",
+                        "Diorite", "Granite", "Gravel", "Obsidian", "Sandstone", "Tuff"), 0, i -> {}))
+                .setTooltip("Open it and type to filter")
+                .setBounds(x, rowY, w, 20);
+        rowY += 26;
+
+        // Color picker driving the theme accent live; persists via defineColor
+        parent.add(new ColorPickerButton("Accent color", DemoConfig.ACCENT.get(), c -> {
+                    DemoConfig.ACCENT.set(c);
+                    DemoConfig.applyAccent(getTheme());
+                }))
+                .setBounds(x, rowY, w, 20);
+        rowY += 26;
+
+        // Multiline text area
+        parent.add(new TextArea("Multiline notes — wraps, scrolls, selects…"))
+                .setBounds(x, rowY, w, 48);
+        rowY += 54;
 
         return rowY;
     }

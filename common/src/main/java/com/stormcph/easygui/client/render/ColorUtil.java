@@ -63,6 +63,49 @@ public final class ColorUtil {
         return withAlpha(shifted, alpha(color));
     }
 
+    /** Packs HSV components (each 0..1; hue wraps) into an opaque ARGB color. */
+    public static int hsv(float hue, float saturation, float value) {
+        hue = hue - (float) Math.floor(hue);
+        float h6 = hue * 6f;
+        int sector = (int) h6 % 6;
+        float f = h6 - (int) h6;
+        float p = value * (1f - saturation);
+        float q = value * (1f - f * saturation);
+        float t = value * (1f - (1f - f) * saturation);
+        float r, g, b;
+        switch (sector) {
+            case 0 -> { r = value; g = t; b = p; }
+            case 1 -> { r = q; g = value; b = p; }
+            case 2 -> { r = p; g = value; b = t; }
+            case 3 -> { r = p; g = q; b = value; }
+            case 4 -> { r = t; g = p; b = value; }
+            default -> { r = value; g = p; b = q; }
+        }
+        return argb(255, Math.round(r * 255f), Math.round(g * 255f), Math.round(b * 255f));
+    }
+
+    /** Extracts {hue, saturation, value} (each 0..1) from an ARGB color; alpha is ignored. */
+    public static float[] toHsv(int color) {
+        float r = red(color) / 255f;
+        float g = green(color) / 255f;
+        float b = blue(color) / 255f;
+        float max = Math.max(r, Math.max(g, b));
+        float min = Math.min(r, Math.min(g, b));
+        float delta = max - min;
+        float hue;
+        if (delta == 0f) {
+            hue = 0f;
+        } else if (max == r) {
+            hue = (((g - b) / delta) % 6f + 6f) % 6f / 6f;
+        } else if (max == g) {
+            hue = ((b - r) / delta + 2f) / 6f;
+        } else {
+            hue = ((r - g) / delta + 4f) / 6f;
+        }
+        float saturation = max == 0f ? 0f : delta / max;
+        return new float[]{hue, saturation, max};
+    }
+
     private static int clamp255(int v) {
         return Math.max(0, Math.min(255, v));
     }

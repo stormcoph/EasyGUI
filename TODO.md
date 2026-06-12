@@ -20,13 +20,13 @@ Living checklist. When a feature ships it gets checked (`[x]`) — never removed
 ## Input widgets
 
 - [x] Range slider — two thumbs selecting a min/max pair, same theming as `Slider`
-- [ ] Color picker — HSV box + hue/alpha strips + hex field; popup and inline variants; binds to `defineColor`
-- [ ] Keybind button — click, press key to bind; conflict highlighting
+- [x] Color picker — HSV box + hue/alpha strips + hex field; popup and inline variants; binds to `defineColor`
+- [x] Keybind button — click, press key to bind; conflict highlighting
 - [x] Number stepper — text input with +/− buttons and drag-to-scrub
 - [x] Segmented control / radio group — exclusive choice for 2–4 options
 - [x] Cycle button — one-click enum cycling ("Mode: Fancy → Fast → Off")
-- [ ] Multiline text area
-- [ ] Searchable dropdown / combo box with filtering
+- [x] Multiline text area
+- [x] Searchable dropdown / combo box with filtering
 
 ## Layout & structure
 

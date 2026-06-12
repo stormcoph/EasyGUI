@@ -5,6 +5,7 @@ import com.stormcph.easygui.client.config.ConfigValue;
 import com.stormcph.easygui.client.config.EasyConfig;
 import com.stormcph.easygui.client.font.Fonts;
 import com.stormcph.easygui.client.font.TrueTypeFont;
+import com.stormcph.easygui.client.render.ColorUtil;
 import com.stormcph.easygui.client.render.Text2D;
 import com.stormcph.easygui.client.theme.Theme;
 import net.fabricmc.api.EnvType;
@@ -28,6 +29,8 @@ public final class DemoConfig {
             CONFIG.defineBool("appearance.frosted_card", true);
     public static final ConfigValue<Boolean> INTER_FONT =
             CONFIG.defineBool("appearance.inter_font", false);
+    public static final ConfigValue<Integer> ACCENT =
+            CONFIG.defineColor("appearance.accent", 0xFF5B8CFF);
     public static final ConfigValue<Boolean> HUD_OVERLAY =
             CONFIG.defineBool("overlay.visible", false);
     public static final ConfigValue<Double> DEMO_PROGRESS =
@@ -41,7 +44,14 @@ public final class DemoConfig {
     /** Applies persisted preferences that don't need game resources. Called at client init. */
     public static void applyStartup() {
         Theme.setDefault(THEME.get() == ThemeChoice.LIGHT ? Theme.light() : Theme.dark());
+        applyAccent(Theme.getDefault());
         EasyGuiClient.DEMO_OVERLAY.setVisible(HUD_OVERLAY.get());
+    }
+
+    /** Applies the persisted accent color to {@code theme}, deriving the hover shade. */
+    public static void applyAccent(Theme theme) {
+        theme.accent = ACCENT.get();
+        theme.accentHover = ColorUtil.shift(theme.accent, 0.18f);
     }
 
     /** Applies the persisted font preference. Called once resources are loaded. */
