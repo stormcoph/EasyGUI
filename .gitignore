@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+build/
+
+# Architectury
+.architectury-transformer/
+
+# Minecraft dev runs
+run/
+runs/
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+bin/
+out/
+
+# OS
+.DS_Store
+Thumbs.db

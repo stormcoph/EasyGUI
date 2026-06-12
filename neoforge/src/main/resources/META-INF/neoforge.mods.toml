@@ -1,0 +1,32 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "PolyForm-Noncommercial-1.0.0"
+issueTrackerURL = ""
+
+[[mods]]
+modId = "easygui"
+version = "${version}"
+displayName = "EasyGUI"
+description = '''A library for building clean, animated, premium-feeling GUIs, screens and HUD overlays.'''
+authors = "stormcoph"
+
+[[dependencies.easygui]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1.0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.easygui]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1]"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.easygui]]
+modId = "architectury"
+type = "required"
+versionRange = "[13.0.6,)"
+ordering = "AFTER"
+side = "BOTH"

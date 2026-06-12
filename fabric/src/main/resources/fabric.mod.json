@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "easygui",
+  "version": "${version}",
+  "name": "EasyGUI",
+  "description": "A library for building clean, animated, premium-feeling GUIs, screens and HUD overlays.",
+  "authors": [
+    "stormcoph"
+  ],
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.stormcph.easygui.fabric.EasyGuiFabric"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*",
+    "architectury": ">=13.0.6"
+  }
+}
