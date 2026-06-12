@@ -85,12 +85,14 @@ public final class OverlayManager {
             float screenHeight = graphics.guiHeight();
             float partialTick = tickDelta.getGameTimeDeltaPartialTick(true);
             for (HudOverlay overlay : OVERLAYS) {
-                if (!overlay.isVisible()) {
-                    continue;
+                if (overlay.updateFade() <= 0.01f) {
+                    continue; // fade settled at hidden; skip until visibility returns
                 }
-                float x = overlay.getAnchor().resolveX(screenWidth, overlay.getWidth(), overlay.offsetX);
-                float y = overlay.getAnchor().resolveY(screenHeight, overlay.getHeight(), overlay.offsetY);
-                overlay.render(graphics, x, y, partialTick);
+                float w = overlay.styledWidth();
+                float h = overlay.styledHeight();
+                float x = overlay.getAnchor().resolveX(screenWidth, w, overlay.offsetX);
+                float y = overlay.getAnchor().resolveY(screenHeight, h, overlay.offsetY);
+                overlay.renderStyled(graphics, x, y, partialTick);
             }
             if (chatEditActive(minecraft)) {
                 var window = minecraft.getWindow();

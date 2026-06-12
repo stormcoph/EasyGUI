@@ -63,4 +63,51 @@ public enum Anchor {
         if (factorY == 1f) return base - y;
         return y - base;
     }
+
+    // ------------------------------------------------------------------
+    // Semantic helpers (alignment-aware overlays read these)
+    // ------------------------------------------------------------------
+
+    /** True for the three left-edge anchors ({@code factorX == 0}). */
+    public boolean isLeft() {
+        return factorX == 0f;
+    }
+
+    /** True for the three right-edge anchors ({@code factorX == 1}). */
+    public boolean isRight() {
+        return factorX == 1f;
+    }
+
+    /** True for the three horizontally centered anchors ({@code factorX == 0.5}). */
+    public boolean isCenterX() {
+        return factorX == 0.5f;
+    }
+
+    /** True for the three top-edge anchors ({@code factorY == 0}). */
+    public boolean isTop() {
+        return factorY == 0f;
+    }
+
+    /** True for the three bottom-edge anchors ({@code factorY == 1}). */
+    public boolean isBottom() {
+        return factorY == 1f;
+    }
+
+    /** True for the three vertically centered anchors ({@code factorY == 0.5}). */
+    public boolean isCenterY() {
+        return factorY == 0.5f;
+    }
+
+    /**
+     * Horizontal alignment as a sign: {@code -1} left, {@code 0} center, {@code +1} right —
+     * e.g. for right-aligning text inside right-anchored overlays.
+     */
+    public int horizontalAlign() {
+        return factorX == 0f ? -1 : factorX == 1f ? 1 : 0;
+    }
+
+    /** Whether stacked content should grow upward (bottom anchors keep their lower edge pinned). */
+    public boolean growsUpward() {
+        return isBottom();
+    }
 }
