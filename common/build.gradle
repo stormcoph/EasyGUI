@@ -7,4 +7,8 @@ dependencies {
     // transformProductionFabric task. It is not a runtime dependency of common.
     modImplementation "net.fabricmc:fabric-loader:${rootProject.fabric_loader_version}"
     modApi "dev.architectury:architectury:${rootProject.architectury_api_version}"
+
+    // JLayer MP3 decoder (LGPL-2.1, used unmodified - see docs/MP3-LICENSE-NOTES.md).
+    // Common only compiles against it; the platform modules bundle it jar-in-jar.
+    implementation "javazoom:jlayer:1.0.1"
 }

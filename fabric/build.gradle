@@ -30,6 +30,13 @@ dependencies {
 
     common(project(path: ":common", configuration: "namedElements")) { transitive false }
     shadowBundle project(path: ":common", configuration: "transformProductionFabric")
+
+    // JLayer MP3 decoder (LGPL-2.1, used unmodified - see docs/MP3-LICENSE-NOTES.md).
+    // implementation puts it on the dev runtime classpath; include nests the original
+    // Maven Central jar into the released jar (jar-in-jar) so it stays a separate,
+    // replaceable artifact as the LGPL requires.
+    implementation "javazoom:jlayer:1.0.1"
+    include "javazoom:jlayer:1.0.1"
 }
 
 processResources {

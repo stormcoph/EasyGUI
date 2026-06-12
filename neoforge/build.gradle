@@ -28,6 +28,13 @@ dependencies {
 
     common(project(path: ":common", configuration: "namedElements")) { transitive false }
     shadowBundle project(path: ":common", configuration: "transformProductionNeoForge")
+
+    // JLayer MP3 decoder (LGPL-2.1, used unmodified - see docs/MP3-LICENSE-NOTES.md).
+    // forgeRuntimeLibrary makes it visible to FML's classloader in dev runs; include
+    // nests the original Maven Central jar into the released jar via NeoForge JarJar
+    // (META-INF/jarjar) so it stays a separate, replaceable artifact as the LGPL requires.
+    forgeRuntimeLibrary "javazoom:jlayer:1.0.1"
+    include "javazoom:jlayer:1.0.1"
 }
 
 processResources {
