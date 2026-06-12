@@ -37,10 +37,37 @@ Living checklist. When a feature ships it gets checked (`[x]`) — never removed
 - [ ] Context menus (right-click)
 - [x] Divider / separator widget
 
+## Charts & statistics
+
+Excel-grade primitives at GUI scale. Charts are regular `Widget`s — usable in screens
+and, via `WidgetHostOverlay`, on the HUD. Building blocks only: no precoded HUD modules,
+but a graph of blocks-per-second (or a module list, keystrokes display, armor HUD…)
+must be expressible in a few lines of user code.
+
+- [ ] Statistics layer — `Metric`/`TimeSeries` ring buffer with time/count windowing; rate counters (events/s → "blocks per second"), sampled suppliers, delta, cumulative sum; window aggregates (min/max/mean/median/sum/stdev/percentiles) and SMA/EMA smoothing; built-in metrics: FPS, ping, TPS, memory, speed, CPS
+- [ ] Sparkline — tiny axis-less single-series chart; line/area/bar variants
+- [ ] LineChart — multi-series, optional smoothing/area-fill/step mode; auto-scaling axes with nice 1-2-5 ticks and *animated* rescale; optional gridlines, labels, legend; per-pixel min/max downsampling so long windows stay cheap
+- [ ] BarChart — vertical/horizontal, grouped/stacked
+- [ ] Histogram — binned distribution (frame-time spike analysis)
+- [ ] Donut / pie chart — donut doubles as a radial gauge with center text
+- [ ] Radar chart (stretch — `fillPolygon` already exists)
+
+## HUD element system
+
+The configurability of the best HUD editors, shipped as primitives.
+
+- [ ] `HudStyle` — uniform per-element styling: scale, opacity, padding, background (none / solid / gradient / frosted blur), corner radius, outline, shadow
+- [ ] `WidgetHostOverlay` — host any widget tree on the HUD; makes charts and the whole widget set HUD-capable in one stroke
+- [ ] `AnimatedListOverlay` — generic animated vertical stack: entries slide/fade in and out, reorders animate, sort modes (rendered width / alphabetical / custom), per-entry color hook. Module lists, event tickers, and potion-effect lists are all ~5-line uses of this
+- [ ] `TextElement` — template strings with a placeholder registry (`{fps}`, `{ping}`, `{coords}`…) and per-character color modes: static, label/value two-tone, gradient, rainbow wave — wave phase from a global clock so every element pulses in sync
+- [ ] Anchor-aware semantics — alignment flips and stacks grow toward screen center automatically based on the anchor zone
+- [ ] Conditional visibility — `setVisibleWhen(BooleanSupplier)` with animated fade/slide; also replaces the current hard-cut `setVisible`
+- [ ] Editor depth — element-to-element snapping and equal-spacing guides, scale handle on the bounding box, right-click per-element settings popup (`HudStyle` fields → widgets)
+- [ ] Layout profiles — save/load named HUD arrangements (positions already persist via `EasyConfig`)
+
 ## Polish & premium feel
 
-- [ ] Toast notifications — slide-in cards over the HUD (success/error/info)
-- [ ] Graph / sparkline widget — live FPS/ping graphs for overlays
+- [ ] Toast notifications — slide-in cards over the HUD (success/error/info; builds on `AnimatedListOverlay`)
 - [ ] ItemStack / player model render widgets
 - [ ] Tab-key focus traversal & keyboard navigation
 - [ ] Drag-and-drop reordering in lists
