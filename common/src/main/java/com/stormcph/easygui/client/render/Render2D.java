@@ -297,7 +297,57 @@ public final class Render2D {
         float f = feather();
         int c0 = c & 0x00FFFFFF;
 
-        // Per-vertex miter directions (unit miter scaled by 1/cos(halfAngle), clamped)
+        float[][] miters = miterOffsets(pts, closed);
+        float[] offX = miters[0];
+        float[] offY = miters[1];
+
+        Matrix4f mat = graphics.pose().last().pose();
+        BufferBuilder buffer = beginColor();
+        int segments = closed ? n : n - 1;
+        for (int i = 0; i < segments; i++) {
+            int j = (i + 1) % n;
+            float ax = pts[i * 2], ay = pts[i * 2 + 1];
+            float bx = pts[j * 2], by = pts[j * 2 + 1];
+            float aLx = ax + offX[i] * half, aLy = ay + offY[i] * half;
+            float aRx = ax - offX[i] * half, aRy = ay - offY[i] * half;
+            float bLx = bx + offX[j] * half, bLy = by + offY[j] * half;
+            float bRx = bx - offX[j] * half, bRy = by - offY[j] * half;
+            // Core band
+            triangle(buffer, mat, aLx, aLy, c, bLx, bLy, c, bRx, bRy, c);
+            triangle(buffer, mat, aLx, aLy, c, bRx, bRy, c, aRx, aRy, c);
+            // Feather on both sides
+            float aLfx = ax + offX[i] * (half + f), aLfy = ay + offY[i] * (half + f);
+            float bLfx = bx + offX[j] * (half + f), bLfy = by + offY[j] * (half + f);
+            float aRfx = ax - offX[i] * (half + f), aRfy = ay - offY[i] * (half + f);
+            float bRfx = bx - offX[j] * (half + f), bRfy = by - offY[j] * (half + f);
+            triangle(buffer, mat, aLx, aLy, c, aLfx, aLfy, c0, bLfx, bLfy, c0);
+            triangle(buffer, mat, aLx, aLy, c, bLfx, bLfy, c0, bLx, bLy, c);
+            triangle(buffer, mat, aRx, aRy, c, bRfx, bRfy, c0, aRfx, aRfy, c0);
+            triangle(buffer, mat, aRx, aRy, c, bRx, bRy, c, bRfx, bRfy, c0);
+        }
+
+        if (!closed) {
+            if (capStart) {
+                addRoundCap(buffer, mat, pts[0], pts[1], pts[0] - pts[2], pts[1] - pts[3],
+                        offX[0], offY[0], half, c, c0);
+            }
+            if (capEnd) {
+                int e = n - 1;
+                addRoundCap(buffer, mat, pts[e * 2], pts[e * 2 + 1],
+                        pts[e * 2] - pts[(e - 1) * 2], pts[e * 2 + 1] - pts[(e - 1) * 2 + 1],
+                        offX[e], offY[e], half, c, c0);
+            }
+        }
+        end(buffer);
+    }
+
+    /**
+     * Per-vertex miter offset directions for a stroked path (the unit miter at each point,
+     * scaled by {@code 1/cos(halfAngle)} and clamped), as {@code {offX[], offY[]}}. Pure
+     * geometry — package-private so the stroke math is unit-testable without a GL context.
+     */
+    static float[][] miterOffsets(float[] pts, boolean closed) {
+        int n = pts.length / 2;
         float[] offX = new float[n];
         float[] offY = new float[n];
         for (int i = 0; i < n; i++) {
@@ -348,45 +398,7 @@ public final class Render2D {
             offX[i] = mx * scale;
             offY[i] = my * scale;
         }
-
-        Matrix4f mat = graphics.pose().last().pose();
-        BufferBuilder buffer = beginColor();
-        int segments = closed ? n : n - 1;
-        for (int i = 0; i < segments; i++) {
-            int j = (i + 1) % n;
-            float ax = pts[i * 2], ay = pts[i * 2 + 1];
-            float bx = pts[j * 2], by = pts[j * 2 + 1];
-            float aLx = ax + offX[i] * half, aLy = ay + offY[i] * half;
-            float aRx = ax - offX[i] * half, aRy = ay - offY[i] * half;
-            float bLx = bx + offX[j] * half, bLy = by + offY[j] * half;
-            float bRx = bx - offX[j] * half, bRy = by - offY[j] * half;
-            // Core band
-            triangle(buffer, mat, aLx, aLy, c, bLx, bLy, c, bRx, bRy, c);
-            triangle(buffer, mat, aLx, aLy, c, bRx, bRy, c, aRx, aRy, c);
-            // Feather on both sides
-            float aLfx = ax + offX[i] * (half + f), aLfy = ay + offY[i] * (half + f);
-            float bLfx = bx + offX[j] * (half + f), bLfy = by + offY[j] * (half + f);
-            float aRfx = ax - offX[i] * (half + f), aRfy = ay - offY[i] * (half + f);
-            float bRfx = bx - offX[j] * (half + f), bRfy = by - offY[j] * (half + f);
-            triangle(buffer, mat, aLx, aLy, c, aLfx, aLfy, c0, bLfx, bLfy, c0);
-            triangle(buffer, mat, aLx, aLy, c, bLfx, bLfy, c0, bLx, bLy, c);
-            triangle(buffer, mat, aRx, aRy, c, bRfx, bRfy, c0, aRfx, aRfy, c0);
-            triangle(buffer, mat, aRx, aRy, c, bRx, bRy, c, bRfx, bRfy, c0);
-        }
-
-        if (!closed) {
-            if (capStart) {
-                addRoundCap(buffer, mat, pts[0], pts[1], pts[0] - pts[2], pts[1] - pts[3],
-                        offX[0], offY[0], half, c, c0);
-            }
-            if (capEnd) {
-                int e = n - 1;
-                addRoundCap(buffer, mat, pts[e * 2], pts[e * 2 + 1],
-                        pts[e * 2] - pts[(e - 1) * 2], pts[e * 2 + 1] - pts[(e - 1) * 2 + 1],
-                        offX[e], offY[e], half, c, c0);
-            }
-        }
-        end(buffer);
+        return new float[][]{offX, offY};
     }
 
     /** Semicircular end cap fan, flush against the stroke's end edge (no overlap). */

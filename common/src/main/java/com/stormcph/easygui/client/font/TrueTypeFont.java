@@ -11,6 +11,7 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.logging.LogUtils;
 import com.stormcph.easygui.client.render.ColorUtil;
 import com.stormcph.easygui.client.render.Render2D;
+import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
@@ -31,6 +32,7 @@ import org.lwjgl.stb.STBTTFontinfo;
 import org.lwjgl.stb.STBTTPackContext;
 import org.lwjgl.stb.STBTTPackRange;
 import org.lwjgl.stb.STBTTPackedchar;
+import org.lwjgl.stb.STBTTVertex;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 import org.slf4j.Logger;
@@ -38,10 +40,18 @@ import org.slf4j.Logger;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.lwjgl.stb.STBTruetype.STBTT_vcubic;
+import static org.lwjgl.stb.STBTruetype.STBTT_vcurve;
+import static org.lwjgl.stb.STBTruetype.STBTT_vline;
+import static org.lwjgl.stb.STBTruetype.STBTT_vmove;
 import static org.lwjgl.stb.STBTruetype.stbtt_FindGlyphIndex;
+import static org.lwjgl.stb.STBTruetype.stbtt_FreeShape;
 import static org.lwjgl.stb.STBTruetype.stbtt_GetCodepointKernAdvance;
+import static org.lwjgl.stb.STBTruetype.stbtt_GetCodepointShape;
 import static org.lwjgl.stb.STBTruetype.stbtt_GetFontVMetrics;
 import static org.lwjgl.stb.STBTruetype.stbtt_GetPackedQuad;
 import static org.lwjgl.stb.STBTruetype.stbtt_InitFont;
@@ -86,6 +96,21 @@ public final class TrueTypeFont implements AutoCloseable {
     private static final int MAX_ATLAS_SIZE = 4096;
     private static final int MAX_CACHED_SIZES = 6;
     private static final int FLOATS_PER_GLYPH = 9; // x0 y0 x1 y1 u0 v0 u1 v1 advance
+
+    /** Soft-shadow sample offsets {@code {dx, dy, weight}} — centre plus two rings. */
+    private static final float[][] SOFT_SHADOW_SAMPLES = {
+            {0f, 0f, 0.50f},
+            {0.5f, 0f, 0.22f}, {-0.5f, 0f, 0.22f}, {0f, 0.5f, 0.22f}, {0f, -0.5f, 0.22f},
+            {0.35f, 0.35f, 0.18f}, {-0.35f, 0.35f, 0.18f}, {0.35f, -0.35f, 0.18f}, {-0.35f, -0.35f, 0.18f},
+            {1f, 0f, 0.12f}, {-1f, 0f, 0.12f}, {0f, 1f, 0.12f}, {0f, -1f, 0.12f},
+            {0.7f, 0.7f, 0.10f}, {-0.7f, 0.7f, 0.10f}, {0.7f, -0.7f, 0.10f}, {-0.7f, -0.7f, 0.10f},
+    };
+
+    /** Returns the packed ARGB color a glyph vertex at {@code (x, y)} in GUI space should get. */
+    @FunctionalInterface
+    private interface VertexColor {
+        int at(float x, float y);
+    }
 
     private final int id = NEXT_ID.getAndIncrement();
     private final String name;
@@ -168,12 +193,23 @@ public final class TrueTypeFont implements AutoCloseable {
 
     /** Width of {@code text} in GUI units at the given size. */
     public float width(String text, float size) {
+        return width(text, size, 0f);
+    }
+
+    /** Width of {@code text} in GUI units, accounting for the {@link TextStyle}'s letter-spacing. */
+    public float width(String text, float size, TextStyle style) {
+        return width(text, size, style == null ? 0f : style.resolveTracking(size));
+    }
+
+    /** Width of {@code text} in GUI units with {@code tracking} extra GUI units after every glyph. */
+    public float width(String text, float size, float tracking) {
         Baked baked = bakedFor(size);
         if (baked == null || text == null || text.isEmpty()) {
             return 0f;
         }
         float scale = Math.max(1f, Render2D.guiScale());
         float width = 0f;
+        int count = 0;
         int previous = -1;
         for (int i = 0; i < text.length(); ) {
             int cp = text.codePointAt(i);
@@ -186,9 +222,10 @@ public final class TrueTypeFont implements AutoCloseable {
                 width += stbtt_GetCodepointKernAdvance(info, previous, cp) * baked.kernScale;
             }
             width += baked.glyphs[glyph * FLOATS_PER_GLYPH + 8];
+            count++;
             previous = cp;
         }
-        return width / scale;
+        return width / scale + tracking * count;
     }
 
     /** Distance from the top of a line to the baseline, in GUI units. */
@@ -255,7 +292,280 @@ public final class TrueTypeFont implements AutoCloseable {
         return drawGlyphs(graphics, text, x, y, size, c);
     }
 
+    /**
+     * Draws {@code text} with its top-left at {@code (x, y)} decorated by {@code style} —
+     * letter-spacing, gradient fills, soft/blurred shadow, outline or hollow lettering,
+     * underline/strikethrough and faux-bold, in that draw order. Returns the end X position.
+     * Passing {@code null} draws plain white text.
+     */
+    public float draw(GuiGraphics graphics, String text, float x, float y, float size, TextStyle style) {
+        if (text == null || text.isEmpty() || closed) {
+            return x;
+        }
+        if (style == null) {
+            return draw(graphics, text, x, y, size, 0xFFFFFFFF);
+        }
+        float tracking = style.resolveTracking(size);
+        Baked baked = bakedFor(size);
+        if (baked == null) {
+            return x;
+        }
+        float scale = Math.max(1f, Render2D.guiScale());
+        float inv = 1f / scale;
+        float originX = Math.round(x * scale) * inv;
+        float baseline = Math.round(y * scale + baked.ascentPx) * inv;
+        float totalWidth = width(text, size, tracking);
+        if (Render2D.getGlobalAlpha() <= 0.004f) {
+            return originX + totalWidth;
+        }
+
+        // Shadow sits behind everything.
+        if (style.isShadow()) {
+            drawTextShadow(graphics, text, x, y, size, style, tracking);
+        }
+        // Outline: stroke the glyphs' real vector contours with feathered polylines. The
+        // stroke is centered on the contour, so a filled outline doubles the width to keep
+        // roughly `thickness` visible outside the fill; hollow text keeps it as-is so the
+        // letter interiors stay genuinely empty.
+        if (style.isOutline() && ColorUtil.alpha(style.getOutlineColor()) > 0 && style.getOutlineThickness() > 0f) {
+            float strokeWidth = style.isHollow()
+                    ? style.getOutlineThickness() : style.getOutlineThickness() * 2f;
+            strokeGlyphs(graphics, text, x, y, size, strokeWidth, style.getOutlineColor(), tracking);
+        }
+        // Fill (skipped for hollow text), optionally doubled half a pixel over for faux-bold.
+        if (!style.isHollow()) {
+            VertexColor fill = fillPaint(style, originX, totalWidth, baseline, baked, inv);
+            drawGlyphs(graphics, text, x, y, size, fill, tracking);
+            if (style.isBold()) {
+                drawGlyphs(graphics, text, x + 0.5f * inv, y, size, fill, tracking);
+            }
+        }
+        // Underline / strikethrough on top.
+        drawDecorations(graphics, style, originX, baseline, totalWidth, size, inv);
+        return originX + totalWidth;
+    }
+
+    /** Builds the per-vertex fill color for {@code style} (solid or gradient across the bounds). */
+    private VertexColor fillPaint(TextStyle style, float originX, float totalWidth,
+                                  float baseline, Baked baked, float inv) {
+        if (style.isGradient()) {
+            int start = style.getGradientStart();
+            int end = style.getGradientEnd();
+            if (style.getGradientDir() == TextStyle.GradientDir.HORIZONTAL) {
+                float span = Math.max(1.0E-4f, totalWidth);
+                return (vx, vy) -> Render2D.applyGlobalAlpha(ColorUtil.lerp(start, end, (vx - originX) / span));
+            }
+            float top = baseline - baked.ascentPx * inv;
+            float span = Math.max(1.0E-4f, (baked.ascentPx - baked.descentPx) * inv);
+            return (vx, vy) -> Render2D.applyGlobalAlpha(ColorUtil.lerp(start, end, (vy - top) / span));
+        }
+        int c = Render2D.applyGlobalAlpha(style.getColor());
+        return (vx, vy) -> c;
+    }
+
+    /** Draws the shadow layer: a single hard copy, or several faded copies for a soft blur. */
+    private void drawTextShadow(GuiGraphics graphics, String text, float x, float y, float size,
+                               TextStyle style, float tracking) {
+        float ox = style.getShadowOffsetX();
+        float oy = style.getShadowOffsetY();
+        int shadowColor = style.getShadowColor();
+        int rawAlpha = ColorUtil.alpha(shadowColor);
+        if (rawAlpha == 0) {
+            return;
+        }
+        float blur = Math.max(0f, style.getShadowBlur());
+        if (blur <= 0.01f) {
+            int c = Render2D.applyGlobalAlpha(shadowColor);
+            drawGlyphs(graphics, text, x + ox, y + oy, size, (vx, vy) -> c, tracking);
+            return;
+        }
+        for (float[] s : SOFT_SHADOW_SAMPLES) {
+            int a = Math.round(rawAlpha * s[2]);
+            if (a <= 0) {
+                continue;
+            }
+            int c = Render2D.applyGlobalAlpha(ColorUtil.withAlpha(shadowColor, a));
+            drawGlyphs(graphics, text, x + ox + s[0] * blur, y + oy + s[1] * blur, size,
+                    (vx, vy) -> c, tracking);
+        }
+    }
+
+    /** Draws underline/strikethrough as thin rects positioned from the font metrics. */
+    private void drawDecorations(GuiGraphics graphics, TextStyle style, float originX, float baseline,
+                                 float totalWidth, float size, float inv) {
+        if (!style.isUnderline() && !style.isStrikethrough()) {
+            return;
+        }
+        int color = style.resolveDecorationColor();
+        float thickness = Math.max(inv, size / 14f);
+        if (style.isUnderline()) {
+            float uy = baseline + Math.max(inv, size * 0.12f);
+            Render2D.fillRect(graphics, originX, Render2D.roundToPixel(uy), totalWidth, thickness, color);
+        }
+        if (style.isStrikethrough()) {
+            float sy = baseline - ascent(size) * 0.3f;
+            Render2D.fillRect(graphics, originX, Render2D.roundToPixel(sy), totalWidth, thickness, color);
+        }
+    }
+
+    /**
+     * Strokes each glyph's real vector contours (from {@code stbtt_GetCodepointShape},
+     * flattened and cached per baked size) with the feathered polyline machinery — genuinely
+     * hollow lettering and crisp outlines at any thickness. Pen advance mirrors
+     * {@link #drawGlyphs} exactly so the stroke registers with the fill. {@code color} is
+     * raw ARGB; {@link Render2D#polylineClosed} applies the global alpha.
+     */
+    private void strokeGlyphs(GuiGraphics graphics, String text, float x, float y, float size,
+                              float thickness, int color, float tracking) {
+        Baked baked = bakedFor(size);
+        if (baked == null) {
+            return;
+        }
+        float scale = Math.max(1f, Render2D.guiScale());
+        float inv = 1f / scale;
+        float originX = Math.round(x * scale) * inv;
+        float baseline = Math.round(y * scale + baked.ascentPx) * inv;
+
+        float penX = originX;
+        int previous = -1;
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            i += Character.charCount(cp);
+            int glyph = indexOf(cp);
+            if (glyph < 0) {
+                continue;
+            }
+            if (kerning && previous >= 0) {
+                penX += stbtt_GetCodepointKernAdvance(info, previous, cp) * baked.kernScale * inv;
+            }
+            for (float[] contour : baked.contoursFor(codepoints[glyph])) {
+                float[] pts = new float[contour.length];
+                for (int p = 0; p < contour.length; p += 2) {
+                    pts[p] = penX + contour[p] * inv;
+                    pts[p + 1] = baseline + contour[p + 1] * inv;
+                }
+                Render2D.polylineClosed(graphics, pts, thickness, color);
+            }
+            penX += baked.glyphs[glyph * FLOATS_PER_GLYPH + 8] * inv + tracking;
+            previous = cp;
+        }
+    }
+
+    /**
+     * Flattens a glyph's vector outline (move/line/quadratic/cubic verbs from STB) into
+     * closed polyline contours, in physical pixels relative to the pen origin and baseline.
+     * STB shapes are y-up in font units; the screen is y-down, so Y is negated.
+     * Package-private so the contour geometry is unit-testable without a GL context.
+     */
+    float[][] flattenGlyph(int cp, float scale) {
+        STBTTVertex.Buffer shape = stbtt_GetCodepointShape(info, cp);
+        if (shape == null) {
+            return new float[0][];
+        }
+        try {
+            List<float[]> out = new ArrayList<>();
+            FloatArrayList contour = null;
+            float px = 0f, py = 0f;
+            for (int v = 0; v < shape.limit(); v++) {
+                STBTTVertex vertex = shape.get(v);
+                float vx = vertex.x() * scale;
+                float vy = -vertex.y() * scale;
+                switch (vertex.type()) {
+                    case STBTT_vmove -> {
+                        finishContour(out, contour);
+                        contour = new FloatArrayList();
+                        contour.add(vx);
+                        contour.add(vy);
+                    }
+                    case STBTT_vline -> {
+                        if (contour != null) {
+                            contour.add(vx);
+                            contour.add(vy);
+                        }
+                    }
+                    case STBTT_vcurve -> {
+                        if (contour != null) {
+                            addQuadratic(contour, px, py,
+                                    vertex.cx() * scale, -vertex.cy() * scale, vx, vy);
+                        }
+                    }
+                    case STBTT_vcubic -> {
+                        if (contour != null) {
+                            addCubic(contour, px, py,
+                                    vertex.cx() * scale, -vertex.cy() * scale,
+                                    vertex.cx1() * scale, -vertex.cy1() * scale, vx, vy);
+                        }
+                    }
+                    default -> {
+                    }
+                }
+                px = vx;
+                py = vy;
+            }
+            finishContour(out, contour);
+            return out.toArray(new float[0][]);
+        } finally {
+            stbtt_FreeShape(info, shape);
+        }
+    }
+
+    /** Closes off a contour: drops a duplicated closing point, skips degenerate (&lt;3 point) rings. */
+    private static void finishContour(List<float[]> out, FloatArrayList contour) {
+        if (contour == null) {
+            return;
+        }
+        int n = contour.size();
+        // polylineClosed closes the loop itself; a repeated start point would make a
+        // zero-length segment and a broken miter.
+        if (n >= 4
+                && Math.abs(contour.getFloat(0) - contour.getFloat(n - 2)) < 0.01f
+                && Math.abs(contour.getFloat(1) - contour.getFloat(n - 1)) < 0.01f) {
+            contour.removeElements(n - 2, n);
+            n -= 2;
+        }
+        if (n >= 6) {
+            out.add(contour.toFloatArray());
+        }
+    }
+
+    /** Flattens a quadratic bézier from {@code (x0, y0)} into line segments (endpoint excluded start). */
+    private static void addQuadratic(FloatArrayList contour, float x0, float y0,
+                                     float cx, float cy, float x1, float y1) {
+        int segments = curveSegments(Math.abs(cx - x0) + Math.abs(cy - y0)
+                + Math.abs(x1 - cx) + Math.abs(y1 - cy));
+        for (int i = 1; i <= segments; i++) {
+            float t = (float) i / segments;
+            float u = 1f - t;
+            contour.add(u * u * x0 + 2f * u * t * cx + t * t * x1);
+            contour.add(u * u * y0 + 2f * u * t * cy + t * t * y1);
+        }
+    }
+
+    /** Flattens a cubic bézier (CFF/OTF fonts) from {@code (x0, y0)} into line segments. */
+    private static void addCubic(FloatArrayList contour, float x0, float y0,
+                                 float c1x, float c1y, float c2x, float c2y, float x1, float y1) {
+        int segments = curveSegments(Math.abs(c1x - x0) + Math.abs(c1y - y0)
+                + Math.abs(c2x - c1x) + Math.abs(c2y - c1y)
+                + Math.abs(x1 - c2x) + Math.abs(y1 - c2y));
+        for (int i = 1; i <= segments; i++) {
+            float t = (float) i / segments;
+            float u = 1f - t;
+            contour.add(u * u * u * x0 + 3f * u * u * t * c1x + 3f * u * t * t * c2x + t * t * t * x1);
+            contour.add(u * u * u * y0 + 3f * u * u * t * c1y + 3f * u * t * t * c2y + t * t * t * y1);
+        }
+    }
+
+    /** Segment count for a curve whose control polygon spans ~{@code extent} physical pixels. */
+    private static int curveSegments(float extent) {
+        return Mth.clamp((int) Math.ceil(Math.sqrt(extent * 1.5f)), 2, 16);
+    }
+
     private float drawGlyphs(GuiGraphics graphics, String text, float x, float y, float size, int color) {
+        return drawGlyphs(graphics, text, x, y, size, (vx, vy) -> color, 0f);
+    }
+
+    private float drawGlyphs(GuiGraphics graphics, String text, float x, float y, float size,
+                             VertexColor color, float tracking) {
         Baked baked = bakedFor(size);
         if (baked == null) {
             return x;
@@ -295,14 +605,18 @@ public final class TrueTypeFont implements AutoCloseable {
                 float y0 = baseline + g[o + 1] * inv;
                 float x1 = penX + g[o + 2] * inv;
                 float y1 = baseline + g[o + 3] * inv;
-                buffer.addVertex(mat, x0, y0, 0).setUv(g[o + 4], g[o + 5]).setColor(color);
-                buffer.addVertex(mat, x0, y1, 0).setUv(g[o + 4], g[o + 7]).setColor(color);
-                buffer.addVertex(mat, x1, y1, 0).setUv(g[o + 6], g[o + 7]).setColor(color);
-                buffer.addVertex(mat, x0, y0, 0).setUv(g[o + 4], g[o + 5]).setColor(color);
-                buffer.addVertex(mat, x1, y1, 0).setUv(g[o + 6], g[o + 7]).setColor(color);
-                buffer.addVertex(mat, x1, y0, 0).setUv(g[o + 6], g[o + 5]).setColor(color);
+                int cTL = color.at(x0, y0);
+                int cBL = color.at(x0, y1);
+                int cBR = color.at(x1, y1);
+                int cTR = color.at(x1, y0);
+                buffer.addVertex(mat, x0, y0, 0).setUv(g[o + 4], g[o + 5]).setColor(cTL);
+                buffer.addVertex(mat, x0, y1, 0).setUv(g[o + 4], g[o + 7]).setColor(cBL);
+                buffer.addVertex(mat, x1, y1, 0).setUv(g[o + 6], g[o + 7]).setColor(cBR);
+                buffer.addVertex(mat, x0, y0, 0).setUv(g[o + 4], g[o + 5]).setColor(cTL);
+                buffer.addVertex(mat, x1, y1, 0).setUv(g[o + 6], g[o + 7]).setColor(cBR);
+                buffer.addVertex(mat, x1, y0, 0).setUv(g[o + 6], g[o + 5]).setColor(cTR);
             }
-            penX += g[o + 8] * inv;
+            penX += g[o + 8] * inv + tracking;
             previous = cp;
         }
 
@@ -354,9 +668,22 @@ public final class TrueTypeFont implements AutoCloseable {
     private final class Baked implements AutoCloseable {
         final float[] glyphs;
         final float ascentPx;
+        final float descentPx;
         final float kernScale;
         final ResourceLocation textureId;
         private final DynamicTexture texture;
+        /** Flattened outline contours per codepoint (physical px, y-down, baseline-relative). */
+        private final Int2ObjectMap<float[][]> contours = new Int2ObjectOpenHashMap<>();
+
+        /** The glyph's flattened contours at this size, extracting and caching on first use. */
+        float[][] contoursFor(int cp) {
+            float[][] cached = contours.get(cp);
+            if (cached == null) {
+                cached = flattenGlyph(cp, kernScale);
+                contours.put(cp, cached);
+            }
+            return cached;
+        }
 
         Baked(int effectivePx) {
             int count = codepoints.length;
@@ -451,6 +778,7 @@ public final class TrueTypeFont implements AutoCloseable {
             float scale = stbtt_ScaleForPixelHeight(info, effectivePx);
             this.kernScale = scale;
             this.ascentPx = unitsAscent * scale;
+            this.descentPx = unitsDescent * scale; // negative (below the baseline)
         }
 
         @Override

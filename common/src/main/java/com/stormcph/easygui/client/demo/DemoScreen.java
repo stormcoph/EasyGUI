@@ -7,6 +7,8 @@ import com.stormcph.easygui.client.chart.Histogram;
 import com.stormcph.easygui.client.chart.LineChart;
 import com.stormcph.easygui.client.chart.RadarChart;
 import com.stormcph.easygui.client.font.Fonts;
+import com.stormcph.easygui.client.font.StyledText;
+import com.stormcph.easygui.client.font.TextStyle;
 import com.stormcph.easygui.client.font.TrueTypeFont;
 import com.stormcph.easygui.client.media.AudioClip;
 import com.stormcph.easygui.client.media.EasyAudio;
@@ -114,6 +116,7 @@ public class DemoScreen extends EasyScreen {
         tabs.setBounds(cx + 8, cy + 40, cardW - 16, cardH - 48);
         buildWidgetsTab(tabs.addTab("Widgets"), tabs, card);
         buildInputsTab(tabs.addTab("Inputs"), tabs);
+        buildTypographyTab(tabs.addTab("Type"), tabs);
         buildLayoutTab(tabs.addTab("Layout"), tabs);
         buildChartsTab(tabs.addTab("Charts"), tabs);
         buildHudTab(tabs.addTab("HUD"), tabs);
@@ -283,6 +286,83 @@ public class DemoScreen extends EasyScreen {
 
         content.add(new TextArea("Multiline notes — wraps, scrolls, selects…"))
                 .setBounds(x, rowY, w, 48);
+    }
+
+    // ------------------------------------------------------------------
+    // Type — decorative typography (TextStyle + StyledText)
+    // ------------------------------------------------------------------
+
+    private void buildTypographyTab(Panel page, Tabs tabs) {
+        ScrollPanel content = pageScroll(page, tabs);
+        float x = tabs.getX() + 12;
+        float w = tabs.getWidth() - 24;
+        float rowY = tabs.contentY() + 8;
+        int accent = getTheme().accent;
+        int text = getTheme().text;
+
+        // Gradient headline with tight-ish tracking (a hero title).
+        content.add(new Label("DISPLAY")
+                        .setStyle(new TextStyle().setGradient(0xFF9CC8FF, 0xFF6D4AFF).setTracking(3f))
+                        .setScale(3f))
+                .setTooltip("Vertical gradient fill + letter-spacing")
+                .setBounds(x, rowY, w, 30);
+        rowY += 34;
+
+        // Outline and hollow lettering, side by side. Hollow needs display size: the
+        // stroke is contour-centered, so at body sizes it eats the letter counters.
+        content.add(new Label("Outline")
+                        .setStyle(new TextStyle().setColor(0xFFFFFFFF).setOutline(0xFF10131A, 1.4f))
+                        .setScale(2f))
+                .setBounds(x, rowY, w / 2f - 6, 28);
+        content.add(new Label("Hollow")
+                        .setStyle(new TextStyle().setOutline(accent, 1.0f).setHollow(true))
+                        .setScale(2.8f))
+                .setTooltip("Outline with a transparent fill")
+                .setBounds(x + w / 2f + 6, rowY, w / 2f - 6, 28);
+        rowY += 34;
+
+        // Soft blurred drop shadow.
+        content.add(new Label("Soft shadow")
+                        .setStyle(new TextStyle().setColor(text).setShadow(0xB0000000, 0f, 2f, 3f))
+                        .setScale(2f))
+                .setTooltip("Multi-draw blurred shadow — no shader")
+                .setBounds(x, rowY, w, 22);
+        rowY += 26;
+
+        // Underline and strikethrough, from the font metrics.
+        content.add(new Label("Underlined")
+                        .setStyle(new TextStyle().setColor(text).setUnderline(true))
+                        .setScale(1.4f))
+                .setBounds(x, rowY, w / 2f - 6, 16);
+        content.add(new Label("Struck out")
+                        .setStyle(new TextStyle().setColor(getTheme().textMuted).setStrikethrough(true))
+                        .setScale(1.4f))
+                .setBounds(x + w / 2f + 6, rowY, w / 2f - 6, 16);
+        rowY += 24;
+
+        content.add(new Divider("Inline mixed styles"))
+                .setBounds(x, rowY, w, 10);
+        rowY += 16;
+
+        // A bold word and a gradient word inside a regular sentence (StyledText runs).
+        TrueTypeFont font = Text2D.getUiFont() != null ? Text2D.getUiFont() : Fonts.inter();
+        if (font != null) {
+            StyledText mixed = new StyledText()
+                    .append("A ", font, 13f, TextStyle.of(text))
+                    .append("bold", font, 13f, TextStyle.of(text).setBold(true))
+                    .append(" word and a ", font, 13f, TextStyle.of(text))
+                    .append("gradient", font, 13f,
+                            new TextStyle().setGradientH(accent, 0xFFFF7AD9).setBold(true))
+                    .append(" one, one baseline.", font, 13f, TextStyle.of(text));
+            content.add(new Label().setStyledText(mixed))
+                    .setTooltip("StyledText — per-run font, size, color/gradient, weight")
+                    .setBounds(x, rowY, w, 16);
+            rowY += 20;
+        }
+
+        content.add(new Label("All of this is one TextStyle/StyledText API — no raw draw calls.")
+                        .setMuted(true))
+                .setBounds(x, rowY, w, 10);
     }
 
     // ------------------------------------------------------------------
