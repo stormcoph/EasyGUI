@@ -3,6 +3,7 @@ package com.stormcph.easygui.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.architectury.event.events.client.ClientTickEvent;
 import dev.architectury.registry.client.keymappings.KeyMappingRegistry;
+import com.stormcph.easygui.client.automation.EasyAutomation;
 import com.stormcph.easygui.client.config.EasyConfig;
 import com.stormcph.easygui.client.demo.DemoConfig;
 import com.stormcph.easygui.client.demo.DemoHud;
@@ -42,6 +43,9 @@ public final class EasyGuiClient {
         openDemoKey = new KeyMapping("key.easygui.open_demo", InputConstants.Type.KEYSYM,
                 GLFW.GLFW_KEY_F8, "key.categories.easygui");
         KeyMappingRegistry.register(openDemoKey);
+
+        EasyAutomation.registerScreen("demo", DemoScreen::new);
+        EasyAutomation.init();
 
         ClientTickEvent.CLIENT_POST.register(minecraft -> {
             // The font preference needs resources, so it applies after the initial load.

@@ -1,6 +1,7 @@
 package com.stormcph.easygui.client.screen;
 
 import com.stormcph.easygui.client.animation.SmoothValue;
+import com.stormcph.easygui.client.automation.EasyAutomation;
 import com.stormcph.easygui.client.render.ColorUtil;
 import com.stormcph.easygui.client.render.Render2D;
 import com.stormcph.easygui.client.render.Text2D;
@@ -171,6 +172,12 @@ public abstract class EasyScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        if (EasyAutomation.overridesMouse()) {
+            // Automation scripts drive hover through a virtual cursor; the real mouse
+            // position would fight the scripted one frame by frame.
+            mouseX = EasyAutomation.mouseXInt();
+            mouseY = EasyAutomation.mouseYInt();
+        }
         float open = openAnim.get();
         if (closing && open < 0.02f) {
             if (minecraft != null) {

@@ -31,6 +31,7 @@ public abstract class Widget {
     protected boolean enabled = true;
     protected boolean focused;
     protected String tooltip;
+    protected String id;
 
     private final SmoothValue hoverAnim = new SmoothValue(0f, 14f);
     private boolean hovered;
@@ -104,6 +105,19 @@ public abstract class Widget {
     public Widget setTooltip(String tooltip) {
         this.tooltip = tooltip;
         return this;
+    }
+
+    /**
+     * Optional stable identifier for tooling: widget-tree dumps include it, and automation
+     * scripts can target the widget with {@code click #id}. Not used by rendering.
+     */
+    public Widget setId(String id) {
+        this.id = id;
+        return this;
+    }
+
+    public String getId() {
+        return id;
     }
 
     public boolean isHovered() {
